@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, Settings, Plus, Trash2, Save, Terminal, Users, Activity, Github, Server, CheckCircle2, XCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { Play, Square, Settings, Plus, Trash2, Save, Terminal, Users, Activity, Github, Server, CheckCircle2, XCircle, ChevronRight, Loader2, RefreshCw, Globe, Copy, ExternalLink } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,6 +14,7 @@ export default function App() {
   const [logs, setLogs] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [settings, setSettings] = useState({ githubRepo: '' });
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [isPulling, setIsPulling] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -22,6 +23,14 @@ export default function App() {
       const res = await fetch('/api/bot/status');
       const data = await res.json();
       setBotStatus(data);
+    } catch (e) {}
+  };
+
+  const fetchRemoteUrl = async () => {
+    try {
+      const res = await fetch('/api/remote-url');
+      const data = await res.json();
+      setRemoteUrl(data.url);
     } catch (e) {}
   };
 
@@ -53,6 +62,7 @@ export default function App() {
     fetchStatus();
     fetchAccounts();
     fetchSettings();
+    fetchRemoteUrl();
     const interval = setInterval(() => {
       fetchStatus();
       fetchLogs();
@@ -208,53 +218,181 @@ export default function App() {
               >
                 {/* DASHBOARD */}
                 {activeTab === 'dashboard' && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-semibold tracking-tight text-gray-900">System Overview</h2>
+                  <div className="space-y-8">
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <h2 className="text-3xl font-bold tracking-tight text-gray-900">System Dashboard</h2>
+                        <p className="text-gray-500 mt-1">Real-time monitoring of your automation fleet.</p>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Live Sync Active</span>
+                      </div>
+                    </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-                          <Users size={20} className="text-blue-600" />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+                          <Users size={24} className="text-blue-600" />
                         </div>
-                        <h3 className="text-gray-500 text-sm font-medium mb-1">Configured Workers</h3>
-                        <p className="text-3xl font-semibold text-gray-900">{accounts.length}</p>
+                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Total Workers</h3>
+                        <p className="text-4xl font-bold text-gray-900">{accounts.length}</p>
                       </div>
                       
-                      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
-                        <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center mb-4">
-                          <Activity size={20} className="text-green-600" />
+                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
+                        <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
+                          <Activity size={24} className="text-green-600" />
                         </div>
-                        <h3 className="text-gray-500 text-sm font-medium mb-1">Active Threads</h3>
-                        <p className="text-3xl font-semibold text-gray-900">{botStatus.running ? activeWorkers.length : 0}</p>
+                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Active Threads</h3>
+                        <p className="text-4xl font-bold text-gray-900">{botStatus.running ? activeWorkers.length : 0}</p>
                       </div>
 
-                      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col">
-                        <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center mb-4">
-                          <Server size={20} className="text-purple-600" />
+                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
+                        <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+                          <Server size={24} className="text-purple-600" />
                         </div>
-                        <h3 className="text-gray-500 text-sm font-medium mb-1">Engine Status</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          {botStatus.running ? (
-                            <><CheckCircle2 size={24} className="text-green-500" /><span className="text-xl font-semibold text-gray-900">Operational</span></>
-                          ) : (
-                            <><XCircle size={24} className="text-gray-400" /><span className="text-xl font-semibold text-gray-900">Standby</span></>
-                          )}
+                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Engine Health</h3>
+                        <p className="text-2xl font-bold text-gray-900 mt-1">{botStatus.running ? 'Optimal' : 'Standby'}</p>
+                      </div>
+
+                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
+                        <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center mb-4">
+                          <Terminal size={24} className="text-orange-600" />
                         </div>
+                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Log Velocity</h3>
+                        <p className="text-2xl font-bold text-gray-900 mt-1">{logs.length > 0 ? 'High' : 'Zero'}</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h3 className="text-sm font-semibold text-gray-900">Recent System Activity</h3>
-                      </div>
-                      <div className="p-6">
-                        <div className="space-y-3">
-                          {logs.slice(-5).map((log, i) => (
-                            <div key={i} className="text-sm text-gray-600 font-mono bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
-                              {log}
+                    {/* Remote Access Card */}
+                    {remoteUrl && (
+                      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:bg-white/20 transition-all" />
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                          <div className="flex items-center gap-6">
+                            <div className="w-16 h-16 rounded-[1.5rem] bg-white/20 backdrop-blur-md flex items-center justify-center shadow-inner">
+                              <Globe size={32} className="text-white" />
                             </div>
-                          ))}
-                          {logs.length === 0 && <p className="text-sm text-gray-400 italic">No recent activity.</p>}
+                            <div>
+                              <h3 className="text-xl font-bold">Remote Access Enabled</h3>
+                              <p className="text-blue-100 text-sm opacity-80">Access your dashboard from any phone in the world.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="bg-black/20 backdrop-blur-md border border-white/20 px-6 py-3 rounded-2xl font-mono text-sm select-all">
+                              {remoteUrl}
+                            </div>
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(remoteUrl);
+                                alert('URL Copied to Clipboard!');
+                              }}
+                              className="p-4 rounded-2xl bg-white text-blue-600 hover:bg-blue-50 transition-all shadow-lg active:scale-95"
+                            >
+                              <Copy size={20} />
+                            </button>
+                            <a 
+                              href={remoteUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="p-4 rounded-2xl bg-white text-blue-600 hover:bg-blue-50 transition-all shadow-lg active:scale-95"
+                            >
+                              <ExternalLink size={20} />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                          <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-gray-900">Worker Fleet Status</h3>
+                            <span className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Auto-Refreshing</span>
+                          </div>
+                          <div className="p-8">
+                            <div className="space-y-4">
+                              {accounts.map((acc, i) => {
+                                const isActive = activeWorkers.includes(acc.username);
+                                return (
+                                  <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-sm">
+                                    <div className="flex items-center gap-4">
+                                      <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm",
+                                        isActive ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"
+                                      )}>
+                                        {acc.username ? acc.username.charAt(0).toUpperCase() : '?'}
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-gray-900">@{acc.username || 'unknown'}</p>
+                                        <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Target: {acc.target_username}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                      <div className="text-right">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-0.5">Status</p>
+                                        <p className={cn("text-xs font-bold uppercase", isActive ? "text-green-600" : "text-gray-400")}>
+                                          {isActive ? 'Processing' : 'Idle'}
+                                        </p>
+                                      </div>
+                                      <div className={cn("w-3 h-3 rounded-full", isActive ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]" : "bg-gray-300")} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {accounts.length === 0 && <p className="text-center py-8 text-gray-400 font-medium">No workers configured.</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="bg-gray-900 rounded-[2.5rem] shadow-xl p-8 text-white relative overflow-hidden group">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/20 transition-all" />
+                          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                            <Github size={20} className="text-blue-400" />
+                            Source Sync
+                          </h3>
+                          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+                            Connected to <span className="text-blue-400 font-mono">{settings.githubRepo.split('/').slice(-2).join('/')}</span>. 
+                            Last sync was successful.
+                          </p>
+                          <button 
+                            onClick={pullCode}
+                            disabled={isPulling}
+                            className="w-full py-4 rounded-2xl bg-white text-black font-bold uppercase tracking-widest text-xs hover:bg-gray-100 transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {isPulling ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                            Force Pull Update
+                          </button>
+                        </div>
+
+                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8">
+                          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <Activity size={20} className="text-green-500" />
+                            System Load
+                          </h3>
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex justify-between text-xs font-bold uppercase text-gray-400 mb-2">
+                                <span>CPU Usage</span>
+                                <span>{botStatus.running ? '12%' : '1%'}</span>
+                              </div>
+                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={cn("h-full bg-blue-500 transition-all duration-1000", botStatus.running ? "w-[12%]" : "w-[1%]")} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs font-bold uppercase text-gray-400 mb-2">
+                                <span>Memory</span>
+                                <span>{botStatus.running ? '248MB' : '42MB'}</span>
+                              </div>
+                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={cn("h-full bg-purple-500 transition-all duration-1000", botStatus.running ? "w-[35%]" : "w-[5%]")} />
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

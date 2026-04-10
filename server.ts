@@ -26,7 +26,7 @@ async function getSettings() {
     const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
     return JSON.parse(data);
   } catch {
-    return { githubRepo: 'https://github.com/yourusername/your-bot-repo.git' };
+    return { githubRepo: 'https://github.com/kuttydevil/pwoliauto.git' };
   }
 }
 
@@ -138,6 +138,15 @@ app.get('/api/bot/status', (req, res) => {
 
 app.get('/api/bot/logs', (req, res) => {
   res.json({ logs: botLogs });
+});
+
+app.get('/api/remote-url', async (req, res) => {
+  try {
+    const url = await fs.readFile(path.join(process.cwd(), '.remote_url'), 'utf-8');
+    res.json({ url: url.trim() });
+  } catch {
+    res.json({ url: null });
+  }
 });
 
 app.delete('/api/bot/logs', (req, res) => {
