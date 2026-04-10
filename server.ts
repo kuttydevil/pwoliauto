@@ -1,10 +1,12 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { spawn, ChildProcess, exec } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const BOT_DIR = path.join(process.cwd(), 'bot_repo');

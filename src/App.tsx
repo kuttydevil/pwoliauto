@@ -16,11 +16,14 @@ export default function App() {
   const [settings, setSettings] = useState({ githubRepo: '' });
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [isPulling, setIsPulling] = useState(false);
+  const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const apiFetch = (path: string, options?: RequestInit) => fetch(`${apiUrl}${path}`, options);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/bot/status');
+      const res = await apiFetch('/api/bot/status');
       const data = await res.json();
       setBotStatus(data);
     } catch (e) {}
@@ -28,7 +31,7 @@ export default function App() {
 
   const fetchRemoteUrl = async () => {
     try {
-      const res = await fetch('/api/remote-url');
+      const res = await apiFetch('/api/remote-url');
       const data = await res.json();
       setRemoteUrl(data.url);
     } catch (e) {}
@@ -36,7 +39,7 @@ export default function App() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/bot/logs');
+      const res = await apiFetch('/api/bot/logs');
       const data = await res.json();
       setLogs(data.logs || []);
     } catch (e) {}
@@ -44,7 +47,7 @@ export default function App() {
 
   const fetchAccounts = async () => {
     try {
-      const res = await fetch('/api/accounts');
+      const res = await apiFetch('/api/accounts');
       const data = await res.json();
       setAccounts(data);
     } catch (e) {}
@@ -52,7 +55,7 @@ export default function App() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await apiFetch('/api/settings');
       const data = await res.json();
       setSettings(data);
     } catch (e) {}
@@ -78,19 +81,19 @@ export default function App() {
 
   const toggleBot = async () => {
     const endpoint = botStatus.running ? '/api/bot/stop' : '/api/bot/start';
-    await fetch(endpoint, { method: 'POST' });
+    await apiFetch(endpoint, { method: 'POST' });
     fetchStatus();
   };
 
   const pullCode = async () => {
     setIsPulling(true);
-    await fetch('/api/bot/pull', { method: 'POST' });
+    await apiFetch('/api/bot/pull', { method: 'POST' });
     await fetchLogs();
     setIsPulling(false);
   };
 
   const saveAccounts = async (newAccounts: any[]) => {
-    await fetch('/api/accounts', {
+    await apiFetch('/api/accounts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newAccounts),
@@ -99,7 +102,7 @@ export default function App() {
   };
 
   const saveSettings = async (newSettings: any) => {
-    await fetch('/api/settings', {
+    await apiFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSettings),
@@ -545,7 +548,7 @@ export default function App() {
                           </span>
                         </div>
                         <button 
-                          onClick={() => fetch('/api/bot/logs', { method: 'DELETE' }).then(fetchLogs)} 
+                          onClick={() => apiFetch('/api/bot/logs', { method: 'DELETE' }).then(fetchLogs)} 
                           className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors shadow-sm"
                         >
                           Clear Output
@@ -613,6 +616,21 @@ export default function App() {
                           />
                         </div>
                         
+                        <div className="space-y-2 mt-6 pt-6 border-t border-gray-100">
+                          <label className="text-sm font-medium text-gray-700">NetHunter Core API URL (For Cloudflare Pages)</label>
+                          <p className="text-sm text-gray-500 mb-2">If you are hosting this dashboard on Cloudflare, paste your NetHunter's trycloudflare.com link here so the UI can connect to your phone.</p>
+                          <input
+                            type="text"
+                            value={apiUrl}
+                            onChange={(e) => {
+                              setApiUrl(e.target.value);
+                              localStorage.setItem('nethunter_api_url', e.target.value);
+                            }}
+                            placeholder="https://your-tunnel.trycloudflare.com"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                          />
+                        </div>
+
                         <div className="pt-4">
                           <button
                             onClick={() => saveSettings(settings)}
