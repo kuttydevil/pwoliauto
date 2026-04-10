@@ -132,6 +132,16 @@ app.post('/api/bot/stop', async (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/download-core', (req, res) => {
+  exec('tar -czf /tmp/core.tar.gz --exclude=node_modules --exclude=.git --exclude=.npm .', (err) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send('Failed to create archive');
+    }
+    res.download('/tmp/core.tar.gz', 'nethunter-core.tar.gz');
+  });
+});
+
 app.get('/api/bot/status', (req, res) => {
   res.json({ running: !!botProcess });
 });
