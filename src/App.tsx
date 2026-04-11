@@ -43,6 +43,9 @@ export default function App() {
   const [settings, setSettings] = useState({ githubRepo: '' });
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [isPulling, setIsPulling] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSavingAccounts, setIsSavingAccounts] = useState(false);
   const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || '');
   const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -147,9 +150,14 @@ export default function App() {
   }, [logs, activeTab]);
 
   const toggleBot = async () => {
-    const endpoint = botStatus.running ? '/api/bot/stop' : '/api/bot/start';
-    await apiFetch(endpoint, { method: 'POST' });
-    fetchStatus();
+    setIsToggling(true);
+    try {
+      const endpoint = botStatus.running ? '/api/bot/stop' : '/api/bot/start';
+      await apiFetch(endpoint, { method: 'POST' });
+      await fetchStatus();
+    } finally {
+      setIsToggling(false);
+    }
   };
 
   const pullCode = async () => {
@@ -160,15 +168,28 @@ export default function App() {
   };
 
   const saveAccounts = async (newAccounts: any[]) => {
-    await apiFetch('/api/accounts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newAccounts),
-    });
-    setAccounts(newAccounts);
+    setIsSavingAccounts(true);
+    try {
+      await apiFetch('/api/accounts', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify(newAccounts),
+      });
+      setAccounts(newAccounts);
+      addLog("SYSTEM: Configuration committed successfully.");
+    } catch (e) {
+      addLog("ERROR: Failed to commit configuration.");
+    } finally {
+      setIsSavingAccounts(false);
+    }
   };
 
   const saveSettings = async (newSettings: any) => {
+    setIsSavingSettings(true);
     const cleanUrl = bridgeInput.replace(/\/+$/, '');
     setApiUrl(cleanUrl);
     localStorage.setItem('nethunter_api_url', cleanUrl);
@@ -192,6 +213,7 @@ export default function App() {
     } else {
       setSettings(newSettings);
     }
+    setIsSavingSettings(false);
   };
 
   // Parse logs to find active workers
@@ -261,14 +283,17 @@ export default function App() {
           </div>
           <button
             onClick={toggleBot}
+            disabled={isToggling || !apiUrl}
             className={cn(
               "w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-[11px] font-bold uppercase tracking-widest transition-all duration-300",
+              (isToggling || !apiUrl) ? "opacity-50 cursor-not-allowed" : "",
               botStatus.running 
                 ? "bg-red-500/10 border border-red-500/40 text-red-500 hover:bg-red-500/20" 
                 : "bg-brand-primary/10 border border-brand-primary/40 text-brand-primary hover:bg-brand-primary/20 neon-glow"
             )}
           >
-            {botStatus.running ? <><Square size={14} /> Terminate</> : <><Play size={14} /> Initialize</>}
+            {isToggling ? <Loader2 size={14} className="animate-spin" /> : (botStatus.running ? <Square size={14} /> : <Play size={14} />)}
+            {isToggling ? 'Processing...' : (botStatus.running ? 'Terminate' : 'Initialize')}
           </button>
         </div>
       </div>
@@ -287,10 +312,13 @@ export default function App() {
             <button 
               onClick={pullCode}
               disabled={isPulling}
-              className="flex items-center gap-2 px-4 py-1.5 rounded border border-brand-primary/30 text-[10px] font-bold uppercase tracking-widest text-brand-primary hover:bg-brand-primary/10 transition-all disabled:opacity-50"
+              className={cn(
+                "flex items-center gap-2 px-4 py-1.5 rounded border border-brand-primary/30 text-[10px] font-bold uppercase tracking-widest text-brand-primary hover:bg-brand-primary/10 transition-all",
+                isPulling ? "opacity-50 cursor-not-allowed" : ""
+              )}
             >
               {isPulling ? <Loader2 size={12} className="animate-spin" /> : <Github size={12} />}
-              Sync Core
+              {isPulling ? 'Syncing...' : 'Sync Core'}
             </button>
           </div>
         </header>
@@ -432,10 +460,13 @@ export default function App() {
                           <button 
                             onClick={pullCode}
                             disabled={isPulling}
-                            className="w-full py-3 rounded bg-brand-primary/10 border border-brand-primary/40 text-brand-primary text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className={cn(
+                              "w-full py-3 rounded bg-brand-primary/10 border border-brand-primary/40 text-brand-primary text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2",
+                              isPulling ? "opacity-50 cursor-not-allowed" : ""
+                            )}
                           >
                             {isPulling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                            Force Core Update
+                            {isPulling ? 'Syncing...' : 'Force Core Update'}
                           </button>
                         </div>
 
@@ -547,9 +578,14 @@ export default function App() {
 
                             <button
                               onClick={() => saveAccounts(accounts)}
-                              className="w-full flex items-center justify-center gap-2 bg-brand-primary/5 border border-brand-primary/30 text-brand-primary py-3 rounded text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/10 transition-all"
+                              disabled={isSavingAccounts}
+                              className={cn(
+                                "w-full flex items-center justify-center gap-2 bg-brand-primary/5 border border-brand-primary/30 text-brand-primary py-3 rounded text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/10 transition-all",
+                                isSavingAccounts ? "opacity-50 cursor-not-allowed" : ""
+                              )}
                             >
-                              <Save size={14} /> Commit Configuration
+                              {isSavingAccounts ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                              {isSavingAccounts ? 'Committing...' : 'Commit Configuration'}
                             </button>
                           </div>
                         </div>
@@ -676,9 +712,14 @@ export default function App() {
                         <div className="pt-6">
                           <button
                             onClick={() => saveSettings(settings)}
-                            className="flex items-center justify-center gap-3 bg-brand-primary/10 border border-brand-primary/40 text-brand-primary px-8 py-3 rounded text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all neon-glow"
+                            disabled={isSavingSettings}
+                            className={cn(
+                              "flex items-center justify-center gap-3 bg-brand-primary/10 border border-brand-primary/40 text-brand-primary px-8 py-3 rounded text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all neon-glow",
+                              isSavingSettings ? "opacity-50 cursor-not-allowed" : ""
+                            )}
                           >
-                            <Save size={16} /> Commit System Changes
+                            {isSavingSettings ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            {isSavingSettings ? 'Committing...' : 'Commit System Changes'}
                           </button>
                         </div>
                       </div>
