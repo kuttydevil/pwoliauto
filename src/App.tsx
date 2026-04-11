@@ -153,8 +153,14 @@ export default function App() {
     setIsToggling(true);
     try {
       const endpoint = botStatus.running ? '/api/bot/stop' : '/api/bot/start';
-      await apiFetch(endpoint, { method: 'POST' });
+      const res = await apiFetch(endpoint, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addLog(`ERROR: ${data.error || 'Failed to toggle engine.'}`);
+      }
       await fetchStatus();
+    } catch (e) {
+      addLog(`ERROR: Network error while toggling engine.`);
     } finally {
       setIsToggling(false);
     }
