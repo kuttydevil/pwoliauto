@@ -8,6 +8,33 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const DEFAULT_ACCOUNTS = [
+  {
+    "username": "4k_movies_4_free",
+    "password": "Jk@kutty*1234*",
+    "target_username": "filmatic",
+    "max_reels": 3000,
+    "repost_interval": 2000,
+    "custom_prompt": "You are a highly manipulative algorithmic growth AI targeting Gen Z. Your goal is MAXIMUM VIRALITY and driving traffic to 'MovieFarming'.\n\nTACTICS:\n1. RAGE BAIT: Analyze the video and make a highly controversial, defend-the-villain or attack-the-hero statement to force angry comments.\n2. READ MORE HACK: Use three vertical dots to hide the rest of the text, forcing them to click '... more' (increases watch time).\n3. THE LOOPHOLE: Claim streaming platforms patched this, but the archive is still up.\n\nCRITICAL RULE: DO NOT use bullet points, labels, brackets, or bold text. Write ONLY the raw caption.\n\nWRITE IN THIS EXACT ORDER:\nWrite a 1-sentence controversial, lowercase hook using slang like 'cooked' or 'ops'.\nWrite a period '.' on a new line.\nWrite another period '.' on a new line.\nWrite another period '.' on a new line.\nWrite 1 sentence gossiping about the tension in the video.\nWrite: 'netflix tried to ban this but the 4k loophole is still up.'\nWrite: 'SEARCH \"MovieFarming\" on Google if the bio link is down.'\nWrite 4 hashtags: #movies #filmtok #moviefarming #cinema\nWrite: MOVIE_TITLE: [exact movie name]"
+  },
+  {
+    "username": "moviefarming_com",
+    "password": "Kutty@devil",
+    "target_username": "filmatic",
+    "max_reels": 3000,
+    "repost_interval": 3000,
+    "custom_prompt": "You are a ruthless viral strategist. Your goal is MAXIMUM VIRALITY by making viewers feel stupid for paying for streaming, driving them to 'MovieFarming'.\n\nTACTICS:\n1. ELITE MOCKERY: Laugh at people paying $20/mo when this 4K archive is free.\n2. SOCIAL PROOF BOMB: Act like millions are already doing this.\n3. READ MORE HACK: Hide the CTA under dots to force algorithmic dwell time.\n\nCRITICAL RULE: DO NOT use bullet points, labels, brackets, or bold text. Write ONLY the raw caption.\n\nWRITE IN THIS EXACT ORDER:\nWrite a 1-sentence mocking, arrogant hook in lowercase (e.g., 'imagine still paying to watch this masterpiece').\nWrite a period '.' on a new line.\nWrite another period '.' on a new line.\nWrite another period '.' on a new line.\nWrite 1 sentence flexing the insane plot or visuals of the video.\nWrite: 'while ur paying $20/mo, thousands are using the 4k archive for free.'\nWrite: 'SEARCH \"MovieFarming\" on Google. no ads. top result.'\nWrite 4 hashtags: #movies #cinema #pov #moviefarming\nWrite: MOVIE_TITLE: [exact movie name]"
+  },
+  {
+    "username": "movie_farming_com",
+    "password": "9847187662",
+    "target_username": "filmatic",
+    "max_reels": 3000,
+    "repost_interval": 3000,
+    "custom_prompt": "You are a viral TikTok-style emotional storyteller. Your goal is MAXIMUM VIRALITY via deep parasocial connection, driving them to 'MovieFarming'.\n\nTACTICS:\n1. 3AM VIBE: Write like a late-night text to a best friend. Deeply emotional, all lowercase.\n2. THE VOID: Say 'this literally altered my brain chemistry' based on the video.\n3. CONSPIRACY: Act like you are risking your account by sharing this site.\n\nCRITICAL RULE: DO NOT use bullet points, labels, brackets, or bold text. Write ONLY the raw caption.\n\nWRITE IN THIS EXACT ORDER:\nWrite a 1-sentence visceral, emotional lowercase hook (e.g., 'this scene literally altered my brain chemistry rn').\nWrite a period '.' on a new line.\nWrite another period '.' on a new line.\nWrite another period '.' on a new line.\nWrite 1 sentence about the heartbreak or crazy tension in the video.\nWrite: 'i found the full 4k version hidden in the archive. i shouldn't share the loophole but whatever.'\nWrite: 'SEARCH \"MovieFarming\" on Google if the link gets taken down.'\nWrite 4 hashtags: #movies #pov #feels #moviefarming\nWrite: MOVIE_TITLE: [exact movie name]"
+  }
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'accounts' | 'listener' | 'settings'>('dashboard');
   const [botStatus, setBotStatus] = useState({ running: false });
@@ -20,7 +47,17 @@ export default function App() {
   const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const apiFetch = (path: string, options?: RequestInit) => fetch(`${apiUrl}${path}`, options);
+  const apiFetch = (path: string, options: RequestInit = {}) => {
+    const cleanUrl = apiUrl.replace(/\/+$/, '');
+    return fetch(`${cleanUrl}${path}`, {
+      ...options,
+      headers: {
+        'Bypass-Tunnel-Reminder': 'true',
+        'ngrok-skip-browser-warning': 'true',
+        ...options.headers,
+      }
+    });
+  };
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -54,7 +91,11 @@ export default function App() {
     try {
       const res = await apiFetch('/api/accounts');
       const data = await res.json();
-      setAccounts(data);
+      if (data && data.length > 0) {
+        setAccounts(data);
+      } else {
+        saveAccounts(DEFAULT_ACCOUNTS);
+      }
     } catch (e) {}
   };
 
@@ -70,8 +111,18 @@ export default function App() {
     const checkHealth = async () => {
       if (!apiUrl) return;
       try {
-        const res = await fetch(`${apiUrl}/api/bot/status`);
-        if (res.ok) addLog("SYSTEM: Connection to NetHunter Core established.");
+        const cleanUrl = apiUrl.replace(/\/+$/, '');
+        const res = await fetch(`${cleanUrl}/api/bot/status`, {
+          headers: {
+            'Bypass-Tunnel-Reminder': 'true',
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+        if (res.ok) {
+          addLog("SYSTEM: Connection to NetHunter Core established.");
+        } else {
+          addLog(`ERROR: Bridge returned status ${res.status}. You may need to authorize the tunnel.`);
+        }
       } catch (err) {
         addLog("ERROR: Unable to reach NetHunter Core. Check your Remote Bridge URL.");
       }
@@ -118,14 +169,19 @@ export default function App() {
   };
 
   const saveSettings = async (newSettings: any) => {
-    setApiUrl(bridgeInput);
-    localStorage.setItem('nethunter_api_url', bridgeInput);
+    const cleanUrl = bridgeInput.replace(/\/+$/, '');
+    setApiUrl(cleanUrl);
+    localStorage.setItem('nethunter_api_url', cleanUrl);
     
-    if (bridgeInput) {
+    if (cleanUrl) {
       try {
-        await fetch(`${bridgeInput}/api/settings`, {
+        await fetch(`${cleanUrl}/api/settings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Bypass-Tunnel-Reminder': 'true',
+            'ngrok-skip-browser-warning': 'true'
+          },
           body: JSON.stringify(newSettings),
         });
         setSettings(newSettings);
@@ -589,8 +645,22 @@ export default function App() {
                         </div>
                         
                         <div className="space-y-3 pt-8 border-t border-brand-primary/10">
-                          <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Network Bridge URL</label>
-                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">Handshake URL for remote dashboard synchronization</p>
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Network Bridge URL</label>
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Handshake URL for remote dashboard synchronization</p>
+                            </div>
+                            {bridgeInput && (
+                              <a 
+                                href={bridgeInput} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="flex items-center gap-2 text-[9px] font-bold text-yellow-500 hover:text-yellow-400 uppercase tracking-widest bg-yellow-500/10 px-3 py-1.5 rounded border border-yellow-500/30 transition-colors"
+                              >
+                                <ExternalLink size={12} /> Authorize Tunnel
+                              </a>
+                            )}
+                          </div>
                           <input
                             type="text"
                             value={bridgeInput}
@@ -598,6 +668,9 @@ export default function App() {
                             placeholder="https://your-tunnel.trycloudflare.com"
                             className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
+                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-2">
+                            * If connection fails, click "Authorize Tunnel" to bypass Cloudflare's security check.
+                          </p>
                         </div>
 
                         <div className="pt-6">
