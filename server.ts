@@ -17,9 +17,45 @@ let botProcess: ChildProcess | null = null;
 let botLogs: string[] = [];
 const MAX_LOGS = 1000;
 
+const COLORS = {
+  reset: "\x1b[0m",
+  bright: "\x1b[1m",
+  dim: "\x1b[2m",
+  blue: "\x1b[34m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  red: "\x1b[31m",
+  cyan: "\x1b[36m",
+  magenta: "\x1b[35m"
+};
+
+function printPro(type: 'INFO' | 'SUCCESS' | 'ERROR' | 'WARN' | 'SYSTEM', message: string) {
+  const timestamp = new Date().toLocaleTimeString();
+  const color = type === 'SUCCESS' ? COLORS.green : 
+                type === 'ERROR' ? COLORS.red : 
+                type === 'WARN' ? COLORS.yellow : 
+                type === 'SYSTEM' ? COLORS.magenta : COLORS.blue;
+  
+  console.log(`${COLORS.dim}[${timestamp}]${COLORS.reset} ${COLORS.bright}${color}${type.padEnd(7)}${COLORS.reset} ${message}`);
+}
+
 function addLog(msg: string) {
-  botLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+  const cleanMsg = msg.trim();
+  if (!cleanMsg) return;
+
+  botLogs.push(`[${new Date().toLocaleTimeString()}] ${cleanMsg}`);
   if (botLogs.length > MAX_LOGS) botLogs.shift();
+
+  // Professional Terminal Output
+  if (cleanMsg.toLowerCase().includes('error') || cleanMsg.toLowerCase().includes('failed')) {
+    printPro('ERROR', cleanMsg);
+  } else if (cleanMsg.toLowerCase().includes('success') || cleanMsg.toLowerCase().includes('completed')) {
+    printPro('SUCCESS', cleanMsg);
+  } else if (cleanMsg.toLowerCase().includes('warning')) {
+    printPro('WARN', cleanMsg);
+  } else {
+    printPro('INFO', cleanMsg);
+  }
 }
 
 // Ensure settings exist
@@ -134,6 +170,16 @@ app.post('/api/bot/stop', async (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/bootstrap', async (req, res) => {
+  try {
+    const content = await fs.readFile(path.join(process.cwd(), 'bootstrap.sh'), 'utf-8');
+    res.setHeader('Content-Type', 'text/x-sh');
+    res.send(content);
+  } catch (e) {
+    res.status(500).send('Error reading bootstrap.sh');
+  }
+});
+
 app.get('/api/download-core', (req, res) => {
   exec('tar -czf /tmp/core.tar.gz --exclude=node_modules --exclude=.git --exclude=.npm .', (err) => {
     if (err) {
@@ -184,7 +230,19 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.clear();
+    console.log(`\n${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
+    console.log(`${COLORS.blue}${COLORS.bright}   NETHUNTER CORE - PROFESSIONAL ENGINE v2.0        ${COLORS.reset}`);
+    console.log(`${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
+    printPro('SYSTEM', `Engine initialized on port ${PORT}`);
+    printPro('SYSTEM', `CORS enabled for remote dashboard access`);
+    
+    fs.readFile('.remote_url', 'utf-8').then(url => {
+      printPro('SYSTEM', `Remote URL: ${COLORS.bright}${COLORS.cyan}${url.trim()}${COLORS.reset}`);
+    }).catch(() => {
+      printPro('WARN', `Remote URL not found. Run bootstrap.sh to start tunnel.`);
+    });
+    console.log(`${COLORS.dim}----------------------------------------------------${COLORS.reset}\n`);
   });
 }
 
