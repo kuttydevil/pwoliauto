@@ -17,6 +17,7 @@ export default function App() {
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [isPulling, setIsPulling] = useState(false);
   const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || '');
+  const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const apiFetch = (path: string, options?: RequestInit) => fetch(`${apiUrl}${path}`, options);
@@ -86,7 +87,7 @@ export default function App() {
       fetchLogs();
     }, 1500);
     return () => clearInterval(interval);
-  }, []);
+  }, [apiUrl]);
 
   useEffect(() => {
     if (activeTab === 'listener') {
@@ -117,12 +118,24 @@ export default function App() {
   };
 
   const saveSettings = async (newSettings: any) => {
-    await apiFetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSettings),
-    });
-    setSettings(newSettings);
+    setApiUrl(bridgeInput);
+    localStorage.setItem('nethunter_api_url', bridgeInput);
+    
+    if (bridgeInput) {
+      try {
+        await fetch(`${bridgeInput}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSettings),
+        });
+        setSettings(newSettings);
+        addLog("SYSTEM: Settings committed successfully.");
+      } catch (err) {
+        addLog("ERROR: Failed to commit settings to remote bridge.");
+      }
+    } else {
+      setSettings(newSettings);
+    }
   };
 
   // Parse logs to find active workers
@@ -580,11 +593,8 @@ export default function App() {
                           <p className="text-[10px] text-gray-500 uppercase tracking-widest">Handshake URL for remote dashboard synchronization</p>
                           <input
                             type="text"
-                            value={apiUrl}
-                            onChange={(e) => {
-                              setApiUrl(e.target.value);
-                              localStorage.setItem('nethunter_api_url', e.target.value);
-                            }}
+                            value={bridgeInput}
+                            onChange={(e) => setBridgeInput(e.target.value)}
                             placeholder="https://your-tunnel.trycloudflare.com"
                             className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />

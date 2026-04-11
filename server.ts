@@ -132,11 +132,27 @@ async function startServer() {
       return res.status(400).json({ error: 'bot.py missing. Sync core first.' });
     }
 
-    addLog('Initializing bot.py execution...');
-    botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
-    botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
-    botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-    botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+    const startBotProcess = () => {
+      addLog('Initializing bot.py execution...');
+      botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
+      botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
+      botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
+      botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+    };
+
+    addLog('Verifying Python dependencies...');
+    const reqPath = path.join(BOT_DIR, 'requirements.txt');
+    const hasReqs = await fs.access(reqPath).then(() => true).catch(() => false);
+    
+    if (hasReqs) {
+      exec(`pip3 install -r ${reqPath} --quiet`, (err) => {
+        if (err) addLog(`Dependency warning: ${err.message}`);
+        startBotProcess();
+      });
+    } else {
+      exec(`pip3 install requests --quiet`, () => startBotProcess());
+    }
+
     res.json({ success: true });
   });
 
@@ -167,18 +183,20 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = await fs.access(distPath).then(() => true).catch(() => false);
+  
+  if (hasDist) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   const PORT = 3000;
