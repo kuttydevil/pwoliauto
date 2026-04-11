@@ -129,20 +129,22 @@ export default function App() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] font-sans flex selection:bg-blue-200">
-      {/* Sidebar - Apple/Google Style */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm z-10">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
-            <Server size={18} className="text-white" />
+    <div className="min-h-screen bg-surface-900 text-gray-100 font-mono flex overflow-hidden relative">
+      <div className="scanline pointer-events-none" />
+      
+      {/* Sidebar - Technical Rail */}
+      <div className="w-64 bg-surface-800 border-r border-brand-primary/20 flex flex-col z-10 relative">
+        <div className="p-6 border-b border-brand-primary/20">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center neon-glow">
+              <Server size={18} className="text-brand-primary" />
+            </div>
+            <h1 className="text-sm font-bold tracking-widest text-brand-primary uppercase">NH-CORE v2.0</h1>
           </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-gray-900">NetHunter Core</h1>
-            <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Production Env</p>
-          </div>
+          <p className="text-[10px] text-brand-primary/50 font-medium uppercase tracking-[0.2em]">Automated Engine</p>
         </div>
         
-        <nav className="flex-1 px-4 py-2 space-y-1">
+        <nav className="flex-1 px-3 py-6 space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -151,250 +153,228 @@ export default function App() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                  "w-full flex items-center gap-3 px-4 py-3 rounded text-[11px] font-bold uppercase tracking-widest transition-all duration-300 border",
                   isActive 
-                    ? "bg-blue-50 text-blue-700" 
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    ? "bg-brand-primary/10 border-brand-primary/40 text-brand-primary neon-glow" 
+                    : "border-transparent text-gray-500 hover:text-gray-300 hover:bg-white/5"
                 )}
               >
-                <Icon size={18} className={cn(isActive ? "text-blue-600" : "text-gray-400")} />
+                <Icon size={14} className={cn(isActive ? "text-brand-primary" : "text-gray-600")} />
                 {item.label}
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 m-4 bg-gray-50 rounded-2xl border border-gray-100">
-          <div className="flex items-center gap-2 mb-3">
-            <div className={cn("w-2 h-2 rounded-full", botStatus.running ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-gray-400")} />
-            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              {botStatus.running ? 'System Online' : 'System Offline'}
-            </span>
+        <div className="p-4 border-t border-brand-primary/20 bg-black/20">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className={cn("w-1.5 h-1.5 rounded-full", botStatus.running ? "bg-brand-primary animate-pulse shadow-[0_0_8px_#00ff41]" : "bg-gray-600")} />
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                {botStatus.running ? 'System Online' : 'System Offline'}
+              </span>
+            </div>
           </div>
           <button
             onClick={toggleBot}
             className={cn(
-              "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 shadow-sm",
+              "w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-[11px] font-bold uppercase tracking-widest transition-all duration-300",
               botStatus.running 
-                ? "bg-white border border-gray-200 text-red-600 hover:bg-red-50 hover:border-red-200" 
-                : "bg-gray-900 text-white hover:bg-gray-800 hover:shadow-md"
+                ? "bg-red-500/10 border border-red-500/40 text-red-500 hover:bg-red-500/20" 
+                : "bg-brand-primary/10 border border-brand-primary/40 text-brand-primary hover:bg-brand-primary/20 neon-glow"
             )}
           >
-            {botStatus.running ? <><Square size={16} /> Terminate</> : <><Play size={16} /> Initialize</>}
+            {botStatus.running ? <><Square size={14} /> Terminate</> : <><Play size={14} /> Initialize</>}
           </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#F5F5F7]">
-        {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-            <span>NetHunter Core</span>
-            <ChevronRight size={14} />
-            <span className="text-gray-900 capitalize">{activeTab.replace('-', ' ')}</span>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+        {/* Header Rail */}
+        <header className="h-14 bg-surface-800/80 backdrop-blur-xl border-b border-brand-primary/20 px-8 flex items-center justify-between z-20">
+          <div className="flex items-center gap-4 text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
+            <span className="text-brand-primary/60">Root</span>
+            <ChevronRight size={12} />
+            <span className="text-gray-200">{activeTab}</span>
           </div>
           
           <div className="flex items-center gap-4">
             <button 
               onClick={pullCode}
               disabled={isPulling}
-              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:shadow-sm transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-1.5 rounded border border-brand-primary/30 text-[10px] font-bold uppercase tracking-widest text-brand-primary hover:bg-brand-primary/10 transition-all disabled:opacity-50"
             >
-              {isPulling ? <Loader2 size={16} className="animate-spin" /> : <Github size={16} />}
-              Sync Repository
+              {isPulling ? <Loader2 size={12} className="animate-spin" /> : <Github size={12} />}
+              Sync Core
             </button>
           </div>
         </header>
 
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto p-8">
+        {/* Content Viewport */}
+        <main className="flex-1 overflow-auto p-8 bg-[radial-gradient(circle_at_center,rgba(0,255,65,0.03)_0%,transparent_70%)]">
           <div className="max-w-6xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
                 transition={{ duration: 0.2 }}
                 className="h-full"
               >
-                {/* DASHBOARD */}
+                {/* DASHBOARD VIEW */}
                 {activeTab === 'dashboard' && (
                   <div className="space-y-8">
-                    <div className="flex items-end justify-between">
+                    <div className="flex items-end justify-between border-b border-brand-primary/10 pb-6">
                       <div>
-                        <h2 className="text-3xl font-bold tracking-tight text-gray-900">System Dashboard</h2>
-                        <p className="text-gray-500 mt-1">Real-time monitoring of your automation fleet.</p>
+                        <h2 className="text-2xl font-bold tracking-[0.1em] text-white uppercase">Command Center</h2>
+                        <p className="text-brand-primary/40 text-[10px] mt-1 font-bold uppercase tracking-widest">Real-time engine telemetry and node status</p>
                       </div>
-                      <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-gray-200 shadow-sm">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Live Sync Active</span>
+                      <div className="flex items-center gap-3 bg-brand-primary/5 border border-brand-primary/20 px-4 py-2 rounded">
+                        <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
+                        <span className="text-[9px] font-bold text-brand-primary uppercase tracking-[0.3em]">Telemetry Active</span>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
-                        <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
-                          <Users size={24} className="text-blue-600" />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {[
+                        { label: 'Total Nodes', value: accounts.length, icon: Users, color: 'text-blue-400' },
+                        { label: 'Active Threads', value: botStatus.running ? activeWorkers.length : 0, icon: Activity, color: 'text-brand-primary' },
+                        { label: 'Engine Load', value: botStatus.running ? '12.4%' : '0.0%', icon: Server, color: 'text-purple-400' },
+                        { label: 'Log Stream', value: logs.length > 0 ? 'Active' : 'Idle', icon: Terminal, color: 'text-orange-400' },
+                      ].map((stat, i) => (
+                        <div key={i} className="bg-surface-800 border border-brand-primary/10 p-5 rounded relative overflow-hidden group hover:border-brand-primary/30 transition-all">
+                          <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <stat.icon size={48} />
+                          </div>
+                          <h3 className="text-gray-500 text-[9px] font-bold uppercase tracking-[0.2em] mb-2">{stat.label}</h3>
+                          <p className={cn("text-2xl font-bold tracking-tighter", stat.color)}>{stat.value}</p>
                         </div>
-                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Total Workers</h3>
-                        <p className="text-4xl font-bold text-gray-900">{accounts.length}</p>
-                      </div>
-                      
-                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
-                        <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
-                          <Activity size={24} className="text-green-600" />
-                        </div>
-                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Active Threads</h3>
-                        <p className="text-4xl font-bold text-gray-900">{botStatus.running ? activeWorkers.length : 0}</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
-                        <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
-                          <Server size={24} className="text-purple-600" />
-                        </div>
-                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Engine Health</h3>
-                        <p className="text-2xl font-bold text-gray-900 mt-1">{botStatus.running ? 'Optimal' : 'Standby'}</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col transition-all hover:shadow-md">
-                        <div className="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center mb-4">
-                          <Terminal size={24} className="text-orange-600" />
-                        </div>
-                        <h3 className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mb-1">Log Velocity</h3>
-                        <p className="text-2xl font-bold text-gray-900 mt-1">{logs.length > 0 ? 'High' : 'Zero'}</p>
-                      </div>
+                      ))}
                     </div>
 
-                    {/* Remote Access Card */}
+                    {/* Remote Access - High Tech Bridge */}
                     {remoteUrl && (
-                      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:bg-white/20 transition-all" />
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                      <div className="bg-surface-800 border border-brand-primary/20 rounded p-8 relative overflow-hidden neon-glow">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary" />
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
                           <div className="flex items-center gap-6">
-                            <div className="w-16 h-16 rounded-[1.5rem] bg-white/20 backdrop-blur-md flex items-center justify-center shadow-inner">
-                              <Globe size={32} className="text-white" />
+                            <div className="w-14 h-14 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center">
+                              <Globe size={28} className="text-brand-primary" />
                             </div>
                             <div>
-                              <h3 className="text-xl font-bold">Remote Access Enabled</h3>
-                              <p className="text-blue-100 text-sm opacity-80">Access your dashboard from any phone in the world.</p>
+                              <h3 className="text-lg font-bold text-white uppercase tracking-widest">Secure Remote Bridge</h3>
+                              <p className="text-brand-primary/50 text-[10px] font-bold uppercase tracking-widest mt-1">Global encrypted tunnel established</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            <div className="bg-black/20 backdrop-blur-md border border-white/20 px-6 py-3 rounded-2xl font-mono text-sm select-all">
+                            <div className="bg-black/40 border border-brand-primary/20 px-6 py-3 rounded font-mono text-xs text-brand-primary select-all tracking-wider">
                               {remoteUrl}
                             </div>
                             <button 
                               onClick={() => {
                                 navigator.clipboard.writeText(remoteUrl);
-                                alert('URL Copied to Clipboard!');
+                                alert('ENCRYPTED URL COPIED');
                               }}
-                              className="p-4 rounded-2xl bg-white text-blue-600 hover:bg-blue-50 transition-all shadow-lg active:scale-95"
+                              className="p-3 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20 transition-all active:scale-95"
                             >
-                              <Copy size={20} />
+                              <Copy size={18} />
                             </button>
                             <a 
                               href={remoteUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="p-4 rounded-2xl bg-white text-blue-600 hover:bg-blue-50 transition-all shadow-lg active:scale-95"
+                              className="p-3 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20 transition-all active:scale-95"
                             >
-                              <ExternalLink size={20} />
+                              <ExternalLink size={18} />
                             </a>
                           </div>
                         </div>
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      <div className="lg:col-span-2 space-y-6">
-                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-                          <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-gray-900">Worker Fleet Status</h3>
-                            <span className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Auto-Refreshing</span>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-2">
+                        <div className="bg-surface-800 border border-brand-primary/20 rounded overflow-hidden">
+                          <div className="px-6 py-4 border-b border-brand-primary/10 flex items-center justify-between bg-black/20">
+                            <h3 className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Node Fleet Registry</h3>
+                            <span className="text-[9px] font-bold text-brand-primary animate-pulse">SYNCING...</span>
                           </div>
-                          <div className="p-8">
-                            <div className="space-y-4">
-                              {accounts.map((acc, i) => {
-                                const isActive = activeWorkers.includes(acc.username);
-                                return (
-                                  <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 transition-all hover:bg-white hover:shadow-sm">
-                                    <div className="flex items-center gap-4">
-                                      <div className={cn(
-                                        "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm",
-                                        isActive ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"
-                                      )}>
-                                        {acc.username ? acc.username.charAt(0).toUpperCase() : '?'}
-                                      </div>
-                                      <div>
-                                        <p className="font-bold text-gray-900">@{acc.username || 'unknown'}</p>
-                                        <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Target: {acc.target_username}</p>
-                                      </div>
+                          <div className="p-4 space-y-2">
+                            {accounts.map((acc, i) => {
+                              const isActive = activeWorkers.includes(acc.username);
+                              return (
+                                <div key={i} className="flex items-center justify-between p-3 rounded bg-black/20 border border-brand-primary/5 hover:border-brand-primary/20 transition-all group">
+                                  <div className="flex items-center gap-4">
+                                    <div className={cn(
+                                      "w-8 h-8 rounded border flex items-center justify-center font-bold text-xs",
+                                      isActive ? "bg-brand-primary/10 border-brand-primary/40 text-brand-primary" : "bg-gray-800 border-gray-700 text-gray-500"
+                                    )}>
+                                      {acc.username ? acc.username.charAt(0).toUpperCase() : '?'}
                                     </div>
-                                    <div className="flex items-center gap-6">
-                                      <div className="text-right">
-                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-0.5">Status</p>
-                                        <p className={cn("text-xs font-bold uppercase", isActive ? "text-green-600" : "text-gray-400")}>
-                                          {isActive ? 'Processing' : 'Idle'}
-                                        </p>
-                                      </div>
-                                      <div className={cn("w-3 h-3 rounded-full", isActive ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]" : "bg-gray-300")} />
+                                    <div>
+                                      <p className="text-xs font-bold text-gray-200 uppercase tracking-widest">@{acc.username || 'unknown'}</p>
+                                      <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Target: {acc.target_username}</p>
                                     </div>
                                   </div>
-                                );
-                              })}
-                              {accounts.length === 0 && <p className="text-center py-8 text-gray-400 font-medium">No workers configured.</p>}
-                            </div>
+                                  <div className="flex items-center gap-6">
+                                    <div className="text-right">
+                                      <p className={cn("text-[10px] font-bold uppercase tracking-widest", isActive ? "text-brand-primary" : "text-gray-600")}>
+                                        {isActive ? 'Executing' : 'Standby'}
+                                      </p>
+                                    </div>
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-brand-primary shadow-[0_0_8px_#00ff41]" : "bg-gray-700")} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {accounts.length === 0 && <p className="text-center py-12 text-gray-600 text-[10px] font-bold uppercase tracking-[0.3em]">No nodes registered</p>}
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-6">
-                        <div className="bg-gray-900 rounded-[2.5rem] shadow-xl p-8 text-white relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/20 transition-all" />
-                          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                            <Github size={20} className="text-blue-400" />
-                            Source Sync
+                        <div className="bg-surface-800 border border-brand-primary/20 rounded p-6 relative overflow-hidden">
+                          <h3 className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <Github size={14} className="text-brand-primary" />
+                            Core Repository
                           </h3>
-                          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-                            Connected to <span className="text-blue-400 font-mono">{settings.githubRepo.split('/').slice(-2).join('/')}</span>. 
-                            Last sync was successful.
-                          </p>
+                          <div className="bg-black/40 p-3 rounded border border-brand-primary/10 mb-6">
+                            <p className="text-[10px] text-gray-400 font-mono break-all">
+                              {settings.githubRepo || 'Not Configured'}
+                            </p>
+                          </div>
                           <button 
                             onClick={pullCode}
                             disabled={isPulling}
-                            className="w-full py-4 rounded-2xl bg-white text-black font-bold uppercase tracking-widest text-xs hover:bg-gray-100 transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="w-full py-3 rounded bg-brand-primary/10 border border-brand-primary/40 text-brand-primary text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                           >
-                            {isPulling ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                            Force Pull Update
+                            {isPulling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            Force Core Update
                           </button>
                         </div>
 
-                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8">
-                          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <Activity size={20} className="text-green-500" />
-                            System Load
+                        <div className="bg-surface-800 border border-brand-primary/20 rounded p-6">
+                          <h3 className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <Activity size={14} className="text-brand-primary" />
+                            System Resources
                           </h3>
-                          <div className="space-y-4">
-                            <div>
-                              <div className="flex justify-between text-xs font-bold uppercase text-gray-400 mb-2">
-                                <span>CPU Usage</span>
-                                <span>{botStatus.running ? '12%' : '1%'}</span>
+                          <div className="space-y-5">
+                            {[
+                              { label: 'CPU Load', value: botStatus.running ? '12%' : '1%', color: 'bg-brand-primary' },
+                              { label: 'Memory', value: botStatus.running ? '248MB' : '42MB', color: 'bg-purple-500' },
+                            ].map((res, i) => (
+                              <div key={i}>
+                                <div className="flex justify-between text-[9px] font-bold uppercase text-gray-500 mb-2 tracking-widest">
+                                  <span>{res.label}</span>
+                                  <span>{res.value}</span>
+                                </div>
+                                <div className="h-1 bg-black/40 rounded-full overflow-hidden">
+                                  <div className={cn("h-full transition-all duration-1000", res.color, botStatus.running ? "w-[40%]" : "w-[5%]")} />
+                                </div>
                               </div>
-                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={cn("h-full bg-blue-500 transition-all duration-1000", botStatus.running ? "w-[12%]" : "w-[1%]")} />
-                              </div>
-                            </div>
-                            <div>
-                              <div className="flex justify-between text-xs font-bold uppercase text-gray-400 mb-2">
-                                <span>Memory</span>
-                                <span>{botStatus.running ? '248MB' : '42MB'}</span>
-                              </div>
-                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={cn("h-full bg-purple-500 transition-all duration-1000", botStatus.running ? "w-[35%]" : "w-[5%]")} />
-                              </div>
-                            </div>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -402,31 +382,34 @@ export default function App() {
                   </div>
                 )}
 
-                {/* ACCOUNTS / WORKERS */}
+                {/* WORKERS VIEW */}
                 {activeTab === 'accounts' && (
                   <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                      <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Worker Configurations</h2>
+                    <div className="flex justify-between items-center border-b border-brand-primary/10 pb-6">
+                      <div>
+                        <h2 className="text-2xl font-bold tracking-[0.1em] text-white uppercase">Node Configuration</h2>
+                        <p className="text-brand-primary/40 text-[10px] mt-1 font-bold uppercase tracking-widest">Manage worker credentials and automation logic</p>
+                      </div>
                       <button
                         onClick={() => {
                           const newAcc = { username: '', password: '', target_username: '', max_reels: 100, repost_interval: 2000, custom_prompt: '' };
                           saveAccounts([...accounts, newAcc]);
                         }}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                        className="flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/40 text-brand-primary px-6 py-2.5 rounded text-[11px] font-bold uppercase tracking-widest hover:bg-brand-primary/20 transition-all neon-glow"
                       >
-                        <Plus size={16} /> Add Worker
+                        <Plus size={14} /> Add Node
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       {accounts.map((acc, index) => (
-                        <div key={index} className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden transition-all hover:shadow-md">
-                          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                        <div key={index} className="bg-surface-800 border border-brand-primary/10 rounded overflow-hidden hover:border-brand-primary/30 transition-all">
+                          <div className="px-6 py-3 border-b border-brand-primary/10 bg-black/20 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                              <div className="w-6 h-6 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center text-brand-primary font-bold text-[10px]">
                                 {acc.username ? acc.username.charAt(0).toUpperCase() : '?'}
                               </div>
-                              <span className="font-semibold text-gray-900">{acc.username || 'New Worker'}</span>
+                              <span className="text-[11px] font-bold text-gray-200 uppercase tracking-widest">{acc.username || 'Unidentified Node'}</span>
                             </div>
                             <button
                               onClick={() => {
@@ -434,70 +417,38 @@ export default function App() {
                                 newAccs.splice(index, 1);
                                 saveAccounts(newAccs);
                               }}
-                              className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
+                              className="text-gray-600 hover:text-red-500 transition-colors p-2"
                             >
-                              <Trash2 size={18} />
+                              <Trash2 size={14} />
                             </button>
                           </div>
                           
-                          <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</label>
-                                <input
-                                  type="text"
-                                  value={acc.username}
-                                  onChange={(e) => {
-                                    const newAccs = [...accounts];
-                                    newAccs[index].username = e.target.value;
-                                    setAccounts(newAccs);
-                                  }}
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Password</label>
-                                <input
-                                  type="password"
-                                  value={acc.password}
-                                  onChange={(e) => {
-                                    const newAccs = [...accounts];
-                                    newAccs[index].password = e.target.value;
-                                    setAccounts(newAccs);
-                                  }}
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Target Profile</label>
-                                <input
-                                  type="text"
-                                  value={acc.target_username}
-                                  onChange={(e) => {
-                                    const newAccs = [...accounts];
-                                    newAccs[index].target_username = e.target.value;
-                                    setAccounts(newAccs);
-                                  }}
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Interval (ms)</label>
-                                <input
-                                  type="number"
-                                  value={acc.repost_interval}
-                                  onChange={(e) => {
-                                    const newAccs = [...accounts];
-                                    newAccs[index].repost_interval = parseInt(e.target.value);
-                                    setAccounts(newAccs);
-                                  }}
-                                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                              </div>
+                          <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
+                              {[
+                                { label: 'Username', value: acc.username, key: 'username' },
+                                { label: 'Password', value: acc.password, key: 'password', type: 'password' },
+                                { label: 'Target Profile', value: acc.target_username, key: 'target_username' },
+                                { label: 'Interval (ms)', value: acc.repost_interval, key: 'repost_interval', type: 'number' },
+                              ].map((field) => (
+                                <div key={field.key} className="space-y-2">
+                                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{field.label}</label>
+                                  <input
+                                    type={field.type || 'text'}
+                                    value={field.value}
+                                    onChange={(e) => {
+                                      const newAccs = [...accounts];
+                                      (newAccs[index] as any)[field.key] = field.type === 'number' ? parseInt(e.target.value) : e.target.value;
+                                      setAccounts(newAccs);
+                                    }}
+                                    className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-2.5 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
+                                  />
+                                </div>
+                              ))}
                             </div>
                             
-                            <div className="space-y-1.5">
-                              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI Prompt Strategy</label>
+                            <div className="space-y-2">
+                              <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Logic Strategy (AI Prompt)</label>
                               <textarea
                                 value={acc.custom_prompt}
                                 onChange={(e) => {
@@ -506,84 +457,76 @@ export default function App() {
                                   setAccounts(newAccs);
                                 }}
                                 rows={4}
-                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none font-mono text-[13px]"
+                                className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all resize-none font-mono"
                               />
                             </div>
 
-                            <div className="pt-2">
-                              <button
-                                onClick={() => saveAccounts(accounts)}
-                                className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
-                              >
-                                <Save size={16} /> Save Configuration
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => saveAccounts(accounts)}
+                              className="w-full flex items-center justify-center gap-2 bg-brand-primary/5 border border-brand-primary/30 text-brand-primary py-3 rounded text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/10 transition-all"
+                            >
+                              <Save size={14} /> Commit Configuration
+                            </button>
                           </div>
                         </div>
                       ))}
-                      {accounts.length === 0 && (
-                        <div className="col-span-full bg-white rounded-3xl border border-dashed border-gray-300 p-12 text-center">
-                          <Users size={48} className="mx-auto text-gray-300 mb-4" />
-                          <h3 className="text-lg font-medium text-gray-900 mb-1">No Workers Configured</h3>
-                          <p className="text-gray-500 text-sm">Add a worker to start automating accounts.</p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
 
-                {/* LISTENER / TERMINAL */}
+                {/* LISTENER VIEW */}
                 {activeTab === 'listener' && (
                   <div className="h-full flex flex-col space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Live Listener</h2>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm">
-                          <span className="relative flex h-2.5 w-2.5">
-                            {botStatus.running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-                            <span className={cn("relative inline-flex rounded-full h-2.5 w-2.5", botStatus.running ? "bg-green-500" : "bg-gray-400")}></span>
+                    <div className="flex justify-between items-center border-b border-brand-primary/10 pb-6">
+                      <div>
+                        <h2 className="text-2xl font-bold tracking-[0.1em] text-white uppercase">Live Stream</h2>
+                        <p className="text-brand-primary/40 text-[10px] mt-1 font-bold uppercase tracking-widest">Encrypted real-time node telemetry</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 bg-black/40 border border-brand-primary/20 px-4 py-2 rounded">
+                          <span className="relative flex h-2 w-2">
+                            {botStatus.running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-primary opacity-75"></span>}
+                            <span className={cn("relative inline-flex rounded-full h-2 w-2", botStatus.running ? "bg-brand-primary" : "bg-gray-600")}></span>
                           </span>
-                          <span className="text-xs font-medium text-gray-600">
-                            {activeWorkers.length} Active Threads
+                          <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest">
+                            {activeWorkers.length} Active Nodes
                           </span>
                         </div>
                         <button 
                           onClick={() => apiFetch('/api/bot/logs', { method: 'DELETE' }).then(fetchLogs)} 
-                          className="text-xs font-medium text-gray-500 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors shadow-sm"
+                          className="text-[9px] font-bold text-gray-500 hover:text-brand-primary uppercase tracking-widest transition-colors"
                         >
-                          Clear Output
+                          Wipe Buffer
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex-1 bg-[#1E1E1E] rounded-2xl shadow-lg border border-gray-800 flex flex-col overflow-hidden">
-                      <div className="h-10 bg-[#2D2D2D] border-b border-gray-800 flex items-center px-4 gap-2">
+                    <div className="flex-1 bg-black/60 rounded border border-brand-primary/20 flex flex-col overflow-hidden neon-glow relative">
+                      <div className="h-8 bg-surface-800 border-b border-brand-primary/10 flex items-center px-4 gap-2">
                         <div className="flex gap-1.5">
-                          <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
-                          <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
-                          <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+                          <div className="w-2 h-2 rounded-full bg-red-500/50"></div>
+                          <div className="w-2 h-2 rounded-full bg-yellow-500/50"></div>
+                          <div className="w-2 h-2 rounded-full bg-brand-primary/50"></div>
                         </div>
-                        <span className="ml-4 text-xs font-medium text-gray-400 font-mono">nethunter@core:~</span>
+                        <span className="ml-4 text-[9px] font-bold text-gray-600 uppercase tracking-widest">Stream: /dev/nethunter/core</span>
                       </div>
-                      <div className="flex-1 p-4 overflow-auto font-mono text-[13px] leading-relaxed">
+                      <div className="flex-1 p-6 overflow-auto font-mono text-[12px] leading-relaxed scrollbar-hide">
                         {logs.length === 0 ? (
-                          <div className="text-gray-500 italic">Waiting for incoming streams...</div>
+                          <div className="text-brand-primary/20 animate-pulse">Waiting for handshake...</div>
                         ) : (
                           logs.map((log, i) => {
-                            // Simple syntax highlighting for logs
-                            let colorClass = "text-gray-300";
-                            if (log.includes('ERROR') || log.includes('FAILED')) colorClass = "text-red-400";
-                            else if (log.includes('SUCCESS') || log.includes('OK')) colorClass = "text-green-400";
-                            else if (log.includes('WARN')) colorClass = "text-yellow-400";
-                            else if (log.includes('INFO')) colorClass = "text-blue-300";
+                            let colorClass = "text-gray-400";
+                            if (log.includes('ERROR') || log.includes('FAILED')) colorClass = "text-red-500";
+                            else if (log.includes('SUCCESS') || log.includes('OK')) colorClass = "text-brand-primary";
+                            else if (log.includes('WARN')) colorClass = "text-yellow-500";
+                            else if (log.includes('SYSTEM')) colorClass = "text-magenta-400";
 
-                            // Highlight account tags [@username]
-                            const formattedLog = log.replace(/\[@(.*?)\]/g, '<span class="text-purple-400 font-semibold">[@$1]</span>');
+                            const formattedLog = log.replace(/\[@(.*?)\]/g, '<span class="text-brand-primary font-bold">[@$1]</span>');
 
                             return (
                               <div 
                                 key={i} 
-                                className={cn("whitespace-pre-wrap break-words py-0.5 hover:bg-white/5", colorClass)}
+                                className={cn("whitespace-pre-wrap break-words py-1 border-l-2 border-transparent hover:border-brand-primary/30 hover:bg-brand-primary/5 pl-3 transition-all", colorClass)}
                                 dangerouslySetInnerHTML={{ __html: formattedLog }}
                               />
                             );
@@ -595,30 +538,31 @@ export default function App() {
                   </div>
                 )}
 
-                {/* SETTINGS */}
+                {/* SETTINGS VIEW */}
                 {activeTab === 'settings' && (
-                  <div className="space-y-6 max-w-2xl">
-                    <h2 className="text-2xl font-semibold tracking-tight text-gray-900">System Settings</h2>
+                  <div className="space-y-6 max-w-3xl">
+                    <div className="border-b border-brand-primary/10 pb-6">
+                      <h2 className="text-2xl font-bold tracking-[0.1em] text-white uppercase">System Matrix</h2>
+                      <p className="text-brand-primary/40 text-[10px] mt-1 font-bold uppercase tracking-widest">Core engine parameters and network bridge</p>
+                    </div>
                     
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8">
-                      <h3 className="text-lg font-medium text-gray-900 mb-6">Repository Configuration</h3>
-                      
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-700">GitHub Repository URL</label>
-                          <p className="text-sm text-gray-500 mb-2">The core engine will pull updates from this repository.</p>
+                    <div className="bg-surface-800 border border-brand-primary/20 rounded p-8 space-y-8">
+                      <div className="space-y-6">
+                        <div className="space-y-3">
+                          <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Core Repository</label>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">Source for automation logic and engine updates</p>
                           <input
                             type="text"
                             value={settings.githubRepo}
                             onChange={(e) => setSettings({ ...settings, githubRepo: e.target.value })}
                             placeholder="https://github.com/username/repo.git"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
                         </div>
                         
-                        <div className="space-y-2 mt-6 pt-6 border-t border-gray-100">
-                          <label className="text-sm font-medium text-gray-700">NetHunter Core API URL (For Cloudflare Pages)</label>
-                          <p className="text-sm text-gray-500 mb-2">If you are hosting this dashboard on Cloudflare, paste your NetHunter's trycloudflare.com link here so the UI can connect to your phone.</p>
+                        <div className="space-y-3 pt-8 border-t border-brand-primary/10">
+                          <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Network Bridge URL</label>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">Handshake URL for remote dashboard synchronization</p>
                           <input
                             type="text"
                             value={apiUrl}
@@ -627,16 +571,16 @@ export default function App() {
                               localStorage.setItem('nethunter_api_url', e.target.value);
                             }}
                             placeholder="https://your-tunnel.trycloudflare.com"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                            className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
                         </div>
 
-                        <div className="pt-4">
+                        <div className="pt-6">
                           <button
                             onClick={() => saveSettings(settings)}
-                            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                            className="flex items-center justify-center gap-3 bg-brand-primary/10 border border-brand-primary/40 text-brand-primary px-8 py-3 rounded text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all neon-glow"
                           >
-                            <Save size={18} /> Save Configuration
+                            <Save size={16} /> Commit System Changes
                           </button>
                         </div>
                       </div>
