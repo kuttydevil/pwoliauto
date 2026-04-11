@@ -8,7 +8,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const BOT_DIR = path.join(process.cwd(), 'bot_repo');
+const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
+  ? process.cwd() 
+  : path.join(process.cwd(), 'bot_repo');
+
 const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
@@ -89,6 +92,17 @@ app.post('/api/bot/pull', async (req, res) => {
       addLog(`Sync Error: ${error.message}`);
       return res.status(500).json({ error: error.message });
     }
+    
+    // Auto-install dependencies if requirements.txt exists
+    const reqPath = path.join(BOT_DIR, 'requirements.txt');
+    fs.access(reqPath).then(() => {
+      addLog("Installing Python dependencies...");
+      exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
+        if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
+        else addLog("Python environment synchronized.");
+      });
+    }).catch(() => {});
+
     addLog(`Sync Complete.`);
     res.json({ success: true, stdout, stderr });
   });

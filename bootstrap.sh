@@ -31,7 +31,13 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # 1. System Check & Dependency Install
 log_info "Performing system integrity check..."
 
-if command -v apt &> /dev/null; then
+# Enhanced Environment Detection
+if [ -d "/data/data/com.termux" ]; then
+    log_info "Termux environment detected. Initializing packages..."
+    pkg update -y
+    pkg install -y nodejs python chromium git cloudflared wget -y
+    log_success "Termux dependencies installed."
+elif command -v apt &> /dev/null; then
     log_info "Kali Linux detected. Synchronizing repositories..."
     sudo apt update -qq
     log_info "Deploying core runtime (Node.js, Python, Git)..."
@@ -47,9 +53,6 @@ if command -v apt &> /dev/null; then
         sudo mv cloudflared /usr/local/bin/
         log_success "Secure bridge binary deployed."
     fi
-elif command -v pkg &> /dev/null; then
-    log_info "Termux environment detected. Initializing packages..."
-    pkg install -y nodejs python chromium git cloudflared wget -y
 else
     log_error "Unsupported environment. System requires Kali or Termux."
     exit 1
@@ -57,7 +60,15 @@ fi
 
 # 2. Workspace Initialization
 log_info "Initializing workspace: $(pwd)"
-mkdir -p bot_repo
+
+# Detect if we are already inside the repo
+if [ -f "bot.py" ]; then
+    log_info "Running in 'In-Repo' mode. Skipping clone."
+    IS_IN_REPO=true
+else
+    mkdir -p bot_repo
+    IS_IN_REPO=false
+fi
 
 # 3. Write package.json
 cat << 'EOF' > package.json
@@ -89,7 +100,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const BOT_DIR = path.join(process.cwd(), 'bot_repo');
+const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
+  ? process.cwd() 
+  : path.join(process.cwd(), 'bot_repo');
+
 const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
@@ -160,16 +174,25 @@ app.post('/api/bot/pull', async (req, res) => {
   const settings = await getSettings();
   addLog(`Synchronizing core with ${settings.githubRepo}...`);
   
-  const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
-  const cmd = exists 
-    ? `cd ${BOT_DIR} && git pull`
-    : `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
+  const isLocal = (await fs.access(path.join(process.cwd(), '.git')).then(() => true).catch(() => false));
+  const cmd = isLocal ? `git pull` : `cd bot_repo && git pull`;
 
   exec(cmd, (error, stdout, stderr) => {
     if (error) {
       addLog(`Sync Error: ${error.message}`);
       return res.status(500).json({ error: error.message });
     }
+    
+    // Auto-install dependencies if requirements.txt exists
+    const reqPath = path.join(BOT_DIR, 'requirements.txt');
+    fs.access(reqPath).then(() => {
+      addLog("Installing Python dependencies...");
+      exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
+        if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
+        else addLog("Python environment synchronized.");
+      });
+    }).catch(() => {});
+
     addLog(`Sync Complete.`);
     res.json({ success: true, stdout, stderr });
   });
@@ -250,13 +273,32 @@ EOF
 # 5. Initial Repository Sync
 log_info "Synchronizing core repository..."
 REPO_URL="https://github.com/kuttydevil/pwoliauto.git"
-if [ ! -d "bot_repo/.git" ]; then
-    rm -rf bot_repo
-    git clone $REPO_URL bot_repo
-    log_success "Core synchronized."
+
+if [ "$IS_IN_REPO" = true ]; then
+    git pull
+    log_success "Core updated (Local)."
 else
-    cd bot_repo && git pull && cd ..
-    log_success "Core updated."
+    if [ ! -d "bot_repo/.git" ]; then
+        rm -rf bot_repo
+        git clone $REPO_URL bot_repo
+        log_success "Core synchronized."
+    else
+        cd bot_repo && git pull && cd ..
+        log_success "Core updated."
+    fi
+fi
+
+# 5.1 Python Dependency Check
+if [ "$IS_IN_REPO" = true ]; then
+    REQ_FILE="requirements.txt"
+else
+    REQ_FILE="bot_repo/requirements.txt"
+fi
+
+if [ -f "$REQ_FILE" ]; then
+    log_info "Installing Python dependencies from $REQ_FILE..."
+    pip3 install -r "$REQ_FILE" --quiet || log_warn "Some dependencies failed to install. Check manually."
+    log_success "Python environment ready."
 fi
 
 # 6. Initialize Secure Bridge
@@ -265,8 +307,8 @@ rm -f .tunnel.log .remote_url
 cloudflared tunnel --url http://localhost:3000 > .tunnel.log 2>&1 &
 
 echo -n -e "${CYAN}[WAIT]${NC} Negotiating tunnel..."
-for i in {1..20}; do
-    sleep 1
+for i in {1..45}; do
+    sleep 2
     URL=$(grep -o 'https://[-a-z0-9.]*trycloudflare.com' .tunnel.log | head -n 1)
     if [ -n "$URL" ]; then
         echo "$URL" > .remote_url

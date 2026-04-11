@@ -21,6 +21,10 @@ export default function App() {
 
   const apiFetch = (path: string, options?: RequestInit) => fetch(`${apiUrl}${path}`, options);
 
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  };
+
   const fetchStatus = async () => {
     try {
       const res = await apiFetch('/api/bot/status');
@@ -62,6 +66,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    const checkHealth = async () => {
+      if (!apiUrl) return;
+      try {
+        const res = await fetch(`${apiUrl}/api/bot/status`);
+        if (res.ok) addLog("SYSTEM: Connection to NetHunter Core established.");
+      } catch (err) {
+        addLog("ERROR: Unable to reach NetHunter Core. Check your Remote Bridge URL.");
+      }
+    };
+
+    checkHealth();
     fetchStatus();
     fetchAccounts();
     fetchSettings();
