@@ -100,7 +100,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const BOT_DIR = path.join(process.cwd(), 'bot_repo');
+const getBotDir = async () => {
+  const repoPath = path.join(process.cwd(), 'bot_repo');
+  const hasRepo = await fs.access(repoPath).then(() => true).catch(() => false);
+  if (hasRepo) return repoPath;
+  
+  const hasMain = await fs.access(path.join(process.cwd(), 'main.py')).then(() => true).catch(() => false);
+  const hasBot = await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false);
+  if (hasMain || hasBot) return process.cwd();
+  
+  return repoPath; // Default fallback
+};
+
+const BOT_DIR = await getBotDir();
 const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
@@ -172,24 +184,25 @@ app.post('/api/bot/pull', async (req, res) => {
   addLog(`Synchronizing core with ${settings.githubRepo}...`);
   
   const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
-  const isSubDir = BOT_DIR.endsWith('bot_repo');
+  const mainExists = await fs.access(path.join(BOT_DIR, 'main.py')).then(() => true).catch(() => false);
+  const botExists = await fs.access(path.join(BOT_DIR, 'bot.py')).then(() => true).catch(() => false);
 
   let cmd;
-  if (exists) {
-    if (isSubDir) {
-      cmd = `cd ${BOT_DIR} && git fetch --all && git checkout origin/main -- .`;
-    } else {
-      cmd = `git add . && git stash && git pull --rebase && git stash pop || true`;
-    }
+  if (exists && (mainExists || botExists)) {
+    // If repo exists and we have an entry point, try to update safely
+    cmd = `cd ${BOT_DIR} && git fetch --all && git reset --hard origin/main`;
   } else {
+    // If repo is broken or entry point is missing, do a fresh clone
+    addLog("Entry point missing or repo corrupted. Performing fresh clone...");
     cmd = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
   }
 
   exec(cmd, (error, stdout, stderr) => {
-    if (error && !stdout.includes('Already up to date')) {
-      addLog(`Sync Warning: ${error.message}`);
-      const fallbackCmd = `git fetch --all && git checkout origin/main -- bot_repo/ || true`;
-      exec(fallbackCmd, () => finalizeSync());
+    if (error) {
+      addLog(`Sync Error: ${error.message}`);
+      // Last ditch effort
+      const lastDitch = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
+      exec(lastDitch, () => finalizeSync());
     } else {
       addLog(`Sync Complete.`);
       finalizeSync();
@@ -227,17 +240,30 @@ app.post('/api/accounts', async (req, res) => {
 
 app.post('/api/bot/start', async (req, res) => {
   if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-  const scriptPath = path.join(BOT_DIR, 'main.py');
-  if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
-    return res.status(400).json({ error: 'main.py missing. Sync core first.' });
+  
+  const mainPath = path.join(BOT_DIR, 'main.py');
+  const botPath = path.join(BOT_DIR, 'bot.py');
+  
+  let scriptToRun = '';
+  if (await fs.access(mainPath).then(() => true).catch(() => false)) {
+    scriptToRun = 'main.py';
+  } else if (await fs.access(botPath).then(() => true).catch(() => false)) {
+    scriptToRun = 'bot.py';
+  }
+
+  if (!scriptToRun) {
+    return res.status(400).json({ error: 'No entry point found (main.py or bot.py). Sync core first.' });
   }
 
   const startBotProcess = () => {
-    addLog('Initializing main.py execution...');
-    botProcess = spawn('python3', ['main.py'], { cwd: BOT_DIR });
+    addLog(`Initializing ${scriptToRun} execution...`);
+    botProcess = spawn('python3', [scriptToRun], { cwd: BOT_DIR });
     botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
     botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-    botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+    botProcess.on('close', (c) => { 
+      addLog(`Engine terminated (Code: ${c})`); 
+      botProcess = null; 
+    });
   };
 
   addLog('Verifying Python dependencies...');
