@@ -685,6 +685,18 @@ export default function App() {
                             className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
                         </div>
+
+                        <div className="space-y-3">
+                          <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Bot Entry Point</label>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">The main script filename to execute (e.g., bot.py, main.py)</p>
+                          <input
+                            type="text"
+                            value={(settings as any).botFile || ''}
+                            onChange={(e) => setSettings({ ...settings, botFile: e.target.value } as any)}
+                            placeholder="bot.py"
+                            className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
+                          />
+                        </div>
                         
                         <div className="space-y-3 pt-8 border-t border-brand-primary/10">
                           <div className="flex justify-between items-end">

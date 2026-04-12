@@ -91,11 +91,38 @@ MAX_LOGS = 2000
 
 # Path configuration
 BASE_DIR = os.getcwd()
-BOT_DIR = os.path.join(BASE_DIR, 'bot_repo')
-if os.path.exists(os.path.join(BASE_DIR, 'bot.py')):
-    BOT_DIR = BASE_DIR
 
-ACCOUNTS_FILE = os.path.join(BOT_DIR, 'accounts_config.json')
+def get_bot_info():
+    """Dynamically find the bot script and its directory."""
+    settings = {}
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            settings = json.load(f)
+    except: pass
+    
+    custom_file = settings.get('botFile')
+    
+    candidates = []
+    if custom_file:
+        candidates.append((BASE_DIR, custom_file))
+        candidates.append((os.path.join(BASE_DIR, 'bot_repo'), custom_file))
+    
+    candidates.extend([
+        (BASE_DIR, 'bot.py'),
+        (BASE_DIR, 'main.py'),
+        (os.path.join(BASE_DIR, 'bot_repo'), 'bot.py'),
+        (os.path.join(BASE_DIR, 'bot_repo'), 'main.py'),
+    ])
+    
+    for directory, filename in candidates:
+        if os.path.exists(os.path.join(directory, filename)):
+            return directory, filename
+    return os.path.join(BASE_DIR, 'bot_repo'), custom_file or 'bot.py'
+
+def get_accounts_file():
+    bot_dir, _ = get_bot_info()
+    return os.path.join(bot_dir, 'accounts_config.json')
+
 SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
 
 def add_log(msg):
@@ -122,13 +149,14 @@ def handle_settings():
 
 @app.route('/api/accounts', methods=['GET', 'POST'])
 def handle_accounts():
+    accounts_file = get_accounts_file()
     if request.method == 'POST':
-        os.makedirs(BOT_DIR, exist_ok=True)
-        with open(ACCOUNTS_FILE, 'w') as f:
+        os.makedirs(os.path.dirname(accounts_file), exist_ok=True)
+        with open(accounts_file, 'w') as f:
             json.dump(request.json, f, indent=2)
         return jsonify({"success": True})
     try:
-        with open(ACCOUNTS_FILE, 'r') as f:
+        with open(accounts_file, 'r') as f:
             return jsonify(json.load(f))
     except:
         return jsonify([])
@@ -139,19 +167,21 @@ def start_bot():
     if BOT_PROCESS and BOT_PROCESS.poll() is None:
         return jsonify({"error": "Engine already active"}), 400
     
-    bot_file = 'bot.py'
-    if not os.path.exists(os.path.join(BOT_DIR, bot_file)):
-        bot_file = 'main.py'
+    bot_dir, bot_file = get_bot_info()
     
-    if not os.path.exists(os.path.join(BOT_DIR, bot_file)):
-        return jsonify({"error": "Bot script missing. Sync core first."}), 400
+    if not os.path.exists(os.path.join(bot_dir, bot_file)):
+        # Log directory contents to help debug
+        files = os.listdir(bot_dir) if os.path.exists(bot_dir) else "Directory missing"
+        add_log(f"Error: {bot_file} not found in {bot_dir}")
+        add_log(f"Available files: {files}")
+        return jsonify({"error": f"Bot script {bot_file} missing in {bot_dir}. Sync core first."}), 400
 
     def run_bot():
         global BOT_PROCESS
-        add_log(f"Initializing {bot_file} execution...")
+        add_log(f"Initializing {bot_file} execution in {bot_dir}...")
         BOT_PROCESS = subprocess.Popen(
             ['python3', bot_file],
-            cwd=BOT_DIR,
+            cwd=bot_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -194,14 +224,31 @@ def pull_code():
     repo = settings.get('githubRepo', 'https://github.com/kuttydevil/pwoliauto.git')
     add_log(f"Synchronizing core with {repo}...")
     
-    if os.path.exists(os.path.join(BOT_DIR, '.git')):
-        cmd = f"cd {BOT_DIR} && git pull"
+    # Determine where to pull
+    target_dir = os.path.join(BASE_DIR, 'bot_repo')
+    if os.path.exists(os.path.join(BASE_DIR, '.git')):
+        target_dir = BASE_DIR
+    
+    if os.path.exists(os.path.join(target_dir, '.git')):
+        cmd = f"cd {target_dir} && git pull"
     else:
-        cmd = f"rm -rf {BOT_DIR} && git clone {repo} {BOT_DIR}"
+        # Safe clone: don't rm -rf BASE_DIR!
+        if target_dir == BASE_DIR:
+            cmd = f"git init . && git remote add origin {repo} && git pull origin main || git pull origin master"
+        else:
+            cmd = f"rm -rf {target_dir} && git clone {repo} {target_dir}"
     
     try:
         output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
         add_log("Sync Complete.")
+        
+        # Auto-install dependencies if requirements.txt exists
+        req_path = os.path.join(target_dir, 'requirements.txt')
+        if os.path.exists(req_path):
+            add_log("Installing Python dependencies...")
+            pip_cmd = f"pip3 install -r {req_path} --quiet --break-system-packages || pip3 install -r {req_path} --quiet"
+            subprocess.Popen(pip_cmd, shell=True)
+            
         return jsonify({"success": True, "output": output})
     except subprocess.CalledProcessError as e:
         add_log(f"Sync Error: {e.output.decode()}")
@@ -225,7 +272,7 @@ EOF
 
 # 4. Install Python API dependencies
 log_info "Installing API dependencies (Flask, Flask-CORS)..."
-pip3 install flask flask-cors --quiet
+pip3 install flask flask-cors --quiet --break-system-packages || pip3 install flask flask-cors --quiet
 
 # 5. Initial Repository Sync
 log_info "Synchronizing core repository..."
@@ -254,7 +301,7 @@ fi
 
 if [ -f "$REQ_FILE" ]; then
     log_info "Installing Python dependencies from $REQ_FILE..."
-    pip3 install -r "$REQ_FILE" --quiet || log_warn "Some dependencies failed to install. Check manually."
+    pip3 install -r "$REQ_FILE" --quiet --break-system-packages || pip3 install -r "$REQ_FILE" --quiet || log_warn "Some dependencies failed to install. Check manually."
     log_success "Python environment ready."
 fi
 
