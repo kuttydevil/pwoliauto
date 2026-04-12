@@ -132,7 +132,8 @@ def generate_caption(video_path: str, custom_prompt: Optional[str] = None, usern
         # --- STEP 5: EXTRACT MOVIE TITLE & BUILD MOVIEFARMING URL ---
         logger.step(3, 4, "Extracting movie title and building URL...", account=username)
         
-        title_match = re.search(r'TITLE:\s*(.*?)\n', raw_text, re.IGNORECASE)
+        # Flexible regex for title extraction
+        title_match = re.search(r'(?:MOVIE_)?TITLE:\s*(.*?)\n', raw_text, re.IGNORECASE)
         caption_match = re.search(r'CAPTION:\s*(.*)', raw_text, re.IGNORECASE | re.DOTALL)
         
         movie_title = title_match.group(1).strip() if title_match else "Unknown Movie"

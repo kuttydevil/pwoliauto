@@ -9,19 +9,15 @@ DRIVER_LOCK = threading.Lock()
 CLIPBOARD_LOCK = threading.Lock()
 
 # --- CONFIGURATION & ENV ---
-os.environ['INSTAGRAM_USERNAME'] = "splcy.den"
-os.environ['INSTAGRAM_PASSWORD'] = "9847187662"
-os.environ['TARGET_USERNAME'] = "filmatic"
-os.environ['GEMINI_API_KEY'] = "AIzaSyALWsDj4gj7YqcwZojaHqv-IQ0CWC-eq8s"
-os.environ['MAX_REELS'] = "3000"
-os.environ['REPOST_INTERVAL'] = "2000"
-
 INSTAGRAM_USERNAME = os.environ.get("INSTAGRAM_USERNAME")
 INSTAGRAM_PASSWORD = os.environ.get("INSTAGRAM_PASSWORD")
 TARGET_USERNAME = os.environ.get("TARGET_USERNAME")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 MAX_REELS = int(os.environ.get("MAX_REELS", 3000))
 REPOST_INTERVAL = int(os.environ.get("REPOST_INTERVAL", 2000))
+
+if not GEMINI_API_KEY:
+    logger.warning("GEMINI_API_KEY not found in environment variables.")
 
 # Global Settings
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
