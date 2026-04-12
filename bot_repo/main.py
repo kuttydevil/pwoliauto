@@ -24,6 +24,9 @@ from scraper.instagram import selenium_login, selenium_download_video, selenium_
 from services.ai import generate_caption
 from utils.state import load_ledger, save_ledger, save_checkpoint
 
+# Global stop event for graceful termination
+STOP_EVENT = threading.Event()
+
 # Configure the AI for generating captions globally
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -55,7 +58,7 @@ def run_account_worker(account_config: Dict[str, Any]) -> None:
         # Login
         selenium_login(driver, username, password)
         
-        while True:
+        while not STOP_EVENT.is_set():
             # Load Ledger
             ledger = load_ledger(paths['ledger_file'])
             
@@ -63,6 +66,8 @@ def run_account_worker(account_config: Dict[str, Any]) -> None:
             reels_data = get_reels_from_profile(driver, target_username, max_count=max_reels)
             
             for reel_url, grid_thumbnail_url in reels_data:
+                if STOP_EVENT.is_set():
+                    break
                 reel_id = reel_url.rstrip('/').split('/')[-1]
                 
                 if reel_id in ledger:
@@ -110,7 +115,13 @@ def run_account_worker(account_config: Dict[str, Any]) -> None:
                     wait_check = random.uniform(repost_interval - 500, repost_interval + 500)
                     wait_check = max(60, wait_check) # Min 1 minute
                     logger.info(f"Sleeping for {wait_check} seconds...", account=username)
-                    time.sleep(wait_check)
+                    
+                    # Sleep in small increments to check for stop event
+                    start_sleep = time.time()
+                    while time.time() - start_sleep < wait_check:
+                        if STOP_EVENT.is_set():
+                            break
+                        time.sleep(1)
 
                 except InstagramLoginError as e:
                     logger.error(f"Login error for {reel_id}: {e}", account=username)
@@ -173,16 +184,26 @@ if __name__ == "__main__":
     logger.info(f"Starting bot for {len(accounts)} account(s)...")
     
     workers = []
-    for i, acc in enumerate(accounts):
-        t = threading.Thread(target=run_account_worker, args=(acc,))
-        t.start()
-        workers.append(t)
-        if i < len(accounts) - 1:
-            stagger = 90  # Allow previous Chrome to fully boot + stabilize before next
-            logger.info(f"Waiting {stagger}s before starting next account...")
-            time.sleep(stagger)
-        
-    for t in workers:
-        t.join()
+    try:
+        for i, acc in enumerate(accounts):
+            t = threading.Thread(target=run_account_worker, args=(acc,))
+            t.start()
+            workers.append(t)
+            if i < len(accounts) - 1:
+                stagger = 90  # Allow previous Chrome to fully boot + stabilize before next
+                logger.info(f"Waiting {stagger}s before starting next account...")
+                
+                # Sleep in small increments to check for keyboard interrupt
+                start_stagger = time.time()
+                while time.time() - start_stagger < stagger:
+                    time.sleep(1)
+            
+        for t in workers:
+            t.join()
+    except (KeyboardInterrupt, SystemExit):
+        logger.warning("Stop signal received. Shutting down workers...")
+        STOP_EVENT.set()
+        for t in workers:
+            t.join(timeout=30)
         
     logger.success("All accounts finished.")

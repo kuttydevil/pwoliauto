@@ -127,14 +127,14 @@ async function startServer() {
 
   app.post('/api/bot/start', async (req, res) => {
     if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-    const scriptPath = path.join(BOT_DIR, 'bot.py');
+    const scriptPath = path.join(BOT_DIR, 'main.py');
     if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
-      return res.status(400).json({ error: 'bot.py missing. Sync core first.' });
+      return res.status(400).json({ error: 'main.py missing. Sync core first.' });
     }
 
     const startBotProcess = () => {
-      addLog('Initializing bot.py execution...');
-      botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
+      addLog('Initializing main.py execution...');
+      botProcess = spawn('python3', ['main.py'], { cwd: BOT_DIR });
       botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
       botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
       botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });

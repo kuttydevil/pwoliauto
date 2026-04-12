@@ -46,7 +46,7 @@ export default function App() {
   const [isToggling, setIsToggling] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingAccounts, setIsSavingAccounts] = useState(false);
-  const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || '');
+  const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || window.location.origin);
   const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
