@@ -100,6 +100,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// CRITICAL: This route must be defined BEFORE any other middleware or Vite
+app.get('/api/bootstrap', async (req, res) => {
+  try {
+    const bootstrapPath = path.join(process.cwd(), 'bootstrap.sh');
+    const content = await fs.readFile(bootstrapPath, 'utf-8');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(content);
+  } catch (e) {
+    res.status(500).send('Bootstrap read error: ' + (e instanceof Error ? e.message : String(e)));
+  }
+});
+
 const getBotDir = async () => {
   const repoPath = path.join(process.cwd(), 'bot_repo');
   const hasRepo = await fs.access(repoPath).then(() => true).catch(() => false);
