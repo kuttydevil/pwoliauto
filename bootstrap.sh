@@ -95,17 +95,34 @@ import cors from 'cors';
 import { spawn, ChildProcess, exec } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
+import { createServer as createViteServer } from 'vite';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+async function startServer() {
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
 
-const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
-  ? process.cwd() 
-  : path.join(process.cwd(), 'bot_repo');
+  const findBot = async () => {
+    const candidates = [
+      path.join(process.cwd(), 'bot.py'),
+      path.join(process.cwd(), 'main.py'),
+      path.join(process.cwd(), 'bot_repo', 'bot.py'),
+      path.join(process.cwd(), 'bot_repo', 'main.py'),
+    ];
+    for (const c of candidates) {
+      if (await fs.access(c).then(() => true).catch(() => false)) {
+        return { dir: path.dirname(c), file: path.basename(c) };
+      }
+    }
+    return null;
+  };
 
-const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
-const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
+  const botInfo = await findBot();
+  const BOT_DIR = botInfo ? botInfo.dir : path.join(process.cwd(), 'bot_repo');
+  const BOT_FILE = botInfo ? botInfo.file : 'bot.py';
+
+  const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
+  const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
 let botProcess: ChildProcess | null = null;
 let botLogs: string[] = [];
@@ -213,20 +230,20 @@ app.post('/api/accounts', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/bot/start', async (req, res) => {
-  if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-  const scriptPath = path.join(BOT_DIR, 'bot.py');
-  if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
-    return res.status(400).json({ error: 'bot.py missing. Sync core first.' });
-  }
+  app.post('/api/bot/start', async (req, res) => {
+    if (botProcess) return res.status(400).json({ error: 'Engine already active' });
+    const scriptPath = path.join(BOT_DIR, BOT_FILE);
+    if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
+      return res.status(400).json({ error: `${BOT_FILE} missing. Sync core first.` });
+    }
 
-  addLog('Initializing bot.py execution...');
-  botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
-  botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
-  botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-  botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
-  res.json({ success: true });
-});
+    addLog(`Initializing ${BOT_FILE} execution...`);
+    botProcess = spawn('python3', [BOT_FILE], { cwd: BOT_DIR });
+    botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
+    botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
+    botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+    res.json({ success: true });
+  });
 
 app.post('/api/bot/stop', async (req, res) => {
   if (!botProcess) return res.status(400).json({ error: 'Engine inactive' });
@@ -254,20 +271,40 @@ app.get('/api/bootstrap', async (req, res) => {
   } catch { res.status(500).send('Bootstrap read error'); }
 });
 
-const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.clear();
-  console.log(`\n${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
-  console.log(`${COLORS.blue}${COLORS.bright}   NETHUNTER CORE - ULTIMATE ENGINE v2.0            ${COLORS.reset}`);
-  console.log(`${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
-  printPro('SYSTEM', `Engine listening on port ${PORT}`);
-  printPro('SYSTEM', `Secure Bridge: Active`);
+  // Vite middleware for development
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = await fs.access(distPath).then(() => true).catch(() => false);
   
-  fs.readFile('.remote_url', 'utf-8').then(url => {
-    printPro('SYSTEM', `Public URL: ${COLORS.bright}${COLORS.cyan}${url.trim()}${COLORS.reset}`);
-  }).catch(() => {});
-  console.log(`${COLORS.dim}----------------------------------------------------${COLORS.reset}\n`);
-});
+  if (hasDist) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  }
+
+  const PORT = 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.clear();
+    console.log(`\n${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
+    console.log(`${COLORS.blue}${COLORS.bright}   NETHUNTER CORE - ULTIMATE ENGINE v2.0            ${COLORS.reset}`);
+    console.log(`${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
+    printPro('SYSTEM', `Engine listening on port ${PORT}`);
+    printPro('SYSTEM', `Secure Bridge: Active`);
+    
+    fs.readFile('.remote_url', 'utf-8').then(url => {
+      printPro('SYSTEM', `Public URL: ${COLORS.bright}${COLORS.cyan}${url.trim()}${COLORS.reset}`);
+    }).catch(() => {});
+    console.log(`${COLORS.dim}----------------------------------------------------${COLORS.reset}\n`);
+  });
+}
+
+startServer();
 EOF
 
 # 5. Initial Repository Sync
