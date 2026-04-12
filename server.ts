@@ -10,10 +10,7 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
-    ? process.cwd() 
-    : path.join(process.cwd(), 'bot_repo');
-
+  const BOT_DIR = path.join(process.cwd(), 'bot_repo');
   const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
   const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 

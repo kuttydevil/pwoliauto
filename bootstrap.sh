@@ -100,10 +100,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
-  ? process.cwd() 
-  : path.join(process.cwd(), 'bot_repo');
-
+const BOT_DIR = path.join(process.cwd(), 'bot_repo');
 const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
@@ -174,27 +171,42 @@ app.post('/api/bot/pull', async (req, res) => {
   const settings = await getSettings();
   addLog(`Synchronizing core with ${settings.githubRepo}...`);
   
-  const isLocal = (await fs.access(path.join(process.cwd(), '.git')).then(() => true).catch(() => false));
-  const cmd = isLocal ? `git pull` : `cd bot_repo && git pull`;
+  const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
+  const isSubDir = BOT_DIR.endsWith('bot_repo');
+
+  let cmd;
+  if (exists) {
+    if (isSubDir) {
+      cmd = `cd ${BOT_DIR} && git fetch --all && git checkout origin/main -- .`;
+    } else {
+      cmd = `git add . && git stash && git pull --rebase && git stash pop || true`;
+    }
+  } else {
+    cmd = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
+  }
 
   exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      addLog(`Sync Error: ${error.message}`);
-      return res.status(500).json({ error: error.message });
+    if (error && !stdout.includes('Already up to date')) {
+      addLog(`Sync Warning: ${error.message}`);
+      const fallbackCmd = `git fetch --all && git checkout origin/main -- bot_repo/ || true`;
+      exec(fallbackCmd, () => finalizeSync());
+    } else {
+      addLog(`Sync Complete.`);
+      finalizeSync();
     }
-    
-    // Auto-install dependencies if requirements.txt exists
-    const reqPath = path.join(BOT_DIR, 'requirements.txt');
-    fs.access(reqPath).then(() => {
-      addLog("Installing Python dependencies...");
-      exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
-        if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
-        else addLog("Python environment synchronized.");
-      });
-    }).catch(() => {});
 
-    addLog(`Sync Complete.`);
-    res.json({ success: true, stdout, stderr });
+    function finalizeSync() {
+      const reqPath = path.join(BOT_DIR, 'requirements.txt');
+      fs.access(reqPath).then(() => {
+        addLog("Installing Python dependencies...");
+        exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
+          if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
+          else addLog("Python environment synchronized.");
+        });
+      }).catch(() => {});
+      
+      if (!res.headersSent) res.json({ success: true, stdout, stderr });
+    }
   });
 });
 
@@ -215,16 +227,32 @@ app.post('/api/accounts', async (req, res) => {
 
 app.post('/api/bot/start', async (req, res) => {
   if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-  const scriptPath = path.join(BOT_DIR, 'bot.py');
+  const scriptPath = path.join(BOT_DIR, 'main.py');
   if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
-    return res.status(400).json({ error: 'bot.py missing. Sync core first.' });
+    return res.status(400).json({ error: 'main.py missing. Sync core first.' });
   }
 
-  addLog('Initializing bot.py execution...');
-  botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
-  botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
-  botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-  botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+  const startBotProcess = () => {
+    addLog('Initializing main.py execution...');
+    botProcess = spawn('python3', ['main.py'], { cwd: BOT_DIR });
+    botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
+    botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
+    botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
+  };
+
+  addLog('Verifying Python dependencies...');
+  const reqPath = path.join(BOT_DIR, 'requirements.txt');
+  const hasReqs = await fs.access(reqPath).then(() => true).catch(() => false);
+  
+  if (hasReqs) {
+    exec(`pip3 install -r ${reqPath} --quiet`, (err) => {
+      if (err) addLog(`Dependency warning: ${err.message}`);
+      startBotProcess();
+    });
+  } else {
+    exec(`pip3 install requests --quiet`, () => startBotProcess());
+  }
+
   res.json({ success: true });
 });
 
