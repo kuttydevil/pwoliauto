@@ -3,7 +3,6 @@ import cors from 'cors';
 import { spawn, ChildProcess, exec } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
   const app = express();
@@ -196,23 +195,6 @@ async function startServer() {
       res.send(content);
     } catch { res.status(500).send('Bootstrap read error'); }
   });
-
-  // Vite middleware for development
-  const distPath = path.join(process.cwd(), 'dist');
-  const hasDist = await fs.access(distPath).then(() => true).catch(() => false);
-  
-  if (hasDist) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  } else {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  }
 
   const PORT = 3000;
   app.listen(PORT, '0.0.0.0', () => {
