@@ -100,31 +100,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// CRITICAL: This route must be defined BEFORE any other middleware or Vite
-app.get('/api/bootstrap', async (req, res) => {
-  try {
-    const bootstrapPath = path.join(process.cwd(), 'bootstrap.sh');
-    const content = await fs.readFile(bootstrapPath, 'utf-8');
-    res.setHeader('Content-Type', 'text/plain');
-    res.send(content);
-  } catch (e) {
-    res.status(500).send('Bootstrap read error: ' + (e instanceof Error ? e.message : String(e)));
-  }
-});
+const BOT_DIR = (await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false)) 
+  ? process.cwd() 
+  : path.join(process.cwd(), 'bot_repo');
 
-const getBotDir = async () => {
-  const repoPath = path.join(process.cwd(), 'bot_repo');
-  const hasRepo = await fs.access(repoPath).then(() => true).catch(() => false);
-  if (hasRepo) return repoPath;
-  
-  const hasMain = await fs.access(path.join(process.cwd(), 'main.py')).then(() => true).catch(() => false);
-  const hasBot = await fs.access(path.join(process.cwd(), 'bot.py')).then(() => true).catch(() => false);
-  if (hasMain || hasBot) return process.cwd();
-  
-  return repoPath; // Default fallback
-};
-
-const BOT_DIR = await getBotDir();
 const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
@@ -173,16 +152,11 @@ function addLog(msg: string) {
 }
 
 async function getSettings() {
-  const defaultRepo = 'https://github.com/kuttydevil/pwoliauto.git';
   try {
     const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    const settings = JSON.parse(data);
-    if (!settings.githubRepo || settings.githubRepo.trim() === '') {
-      settings.githubRepo = defaultRepo;
-    }
-    return settings;
+    return JSON.parse(data);
   } catch {
-    return { githubRepo: defaultRepo };
+    return { githubRepo: 'https://github.com/kuttydevil/pwoliauto.git' };
   }
 }
 
@@ -200,34 +174,27 @@ app.post('/api/bot/pull', async (req, res) => {
   const settings = await getSettings();
   addLog(`Synchronizing core with ${settings.githubRepo}...`);
   
-  // Simple, aggressive sync: Clone if missing, otherwise force pull
-  const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
-  
-  let cmd;
-  if (exists) {
-    cmd = `cd ${BOT_DIR} && git fetch --all && git reset --hard origin/main`;
-  } else {
-    cmd = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
-  }
+  const isLocal = (await fs.access(path.join(process.cwd(), '.git')).then(() => true).catch(() => false));
+  const cmd = isLocal ? `git pull` : `cd bot_repo && git pull`;
 
   exec(cmd, (error, stdout, stderr) => {
     if (error) {
-      addLog(`Sync Warning: ${error.message}. Attempting fresh clone...`);
-      exec(`rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`, () => finalizeSync());
-    } else {
-      addLog(`Sync Complete.`);
-      finalizeSync();
+      addLog(`Sync Error: ${error.message}`);
+      return res.status(500).json({ error: error.message });
     }
+    
+    // Auto-install dependencies if requirements.txt exists
+    const reqPath = path.join(BOT_DIR, 'requirements.txt');
+    fs.access(reqPath).then(() => {
+      addLog("Installing Python dependencies...");
+      exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
+        if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
+        else addLog("Python environment synchronized.");
+      });
+    }).catch(() => {});
 
-    function finalizeSync() {
-      const reqPath = path.join(BOT_DIR, 'requirements.txt');
-      fs.access(reqPath).then(() => {
-        addLog("Installing Python dependencies...");
-        exec(`pip3 install -r ${reqPath} --quiet`, () => addLog("Python environment ready."));
-      }).catch(() => {});
-      
-      if (!res.headersSent) res.json({ success: true, stdout, stderr });
-    }
+    addLog(`Sync Complete.`);
+    res.json({ success: true, stdout, stderr });
   });
 });
 
@@ -248,45 +215,16 @@ app.post('/api/accounts', async (req, res) => {
 
 app.post('/api/bot/start', async (req, res) => {
   if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-  
-  const mainPath = path.join(BOT_DIR, 'main.py');
-  const botPath = path.join(BOT_DIR, 'bot.py');
-  
-  let scriptToRun = '';
-  if (await fs.access(mainPath).then(() => true).catch(() => false)) {
-    scriptToRun = 'main.py';
-  } else if (await fs.access(botPath).then(() => true).catch(() => false)) {
-    scriptToRun = 'bot.py';
+  const scriptPath = path.join(BOT_DIR, 'bot.py');
+  if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
+    return res.status(400).json({ error: 'bot.py missing. Sync core first.' });
   }
 
-  if (!scriptToRun) {
-    return res.status(400).json({ error: 'No entry point found (main.py or bot.py). Sync core first.' });
-  }
-
-  const startBotProcess = () => {
-    addLog(`Initializing ${scriptToRun} execution...`);
-    botProcess = spawn('python3', [scriptToRun], { cwd: BOT_DIR });
-    botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
-    botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-    botProcess.on('close', (c) => { 
-      addLog(`Engine terminated (Code: ${c})`); 
-      botProcess = null; 
-    });
-  };
-
-  addLog('Verifying Python dependencies...');
-  const reqPath = path.join(BOT_DIR, 'requirements.txt');
-  const hasReqs = await fs.access(reqPath).then(() => true).catch(() => false);
-  
-  if (hasReqs) {
-    exec(`pip3 install -r ${reqPath} --quiet`, (err) => {
-      if (err) addLog(`Dependency warning: ${err.message}`);
-      startBotProcess();
-    });
-  } else {
-    exec(`pip3 install requests --quiet`, () => startBotProcess());
-  }
-
+  addLog('Initializing bot.py execution...');
+  botProcess = spawn('python3', ['bot.py'], { cwd: BOT_DIR });
+  botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
+  botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
+  botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
   res.json({ success: true });
 });
 

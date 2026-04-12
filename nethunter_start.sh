@@ -44,10 +44,6 @@ npm install
 # 6. Create necessary directories
 echo -e "${GREEN}[*] Preparing workspace...${NC}"
 mkdir -p bot_repo
-mkdir -p bot_repo/core
-mkdir -p bot_repo/scraper
-mkdir -p bot_repo/services
-mkdir -p bot_repo/utils
 mkdir -p bot_repo/accounts_data
 mkdir -p bot_repo/promotion_images
 
