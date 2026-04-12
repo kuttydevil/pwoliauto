@@ -47,7 +47,8 @@ export default function App() {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingAccounts, setIsSavingAccounts] = useState(false);
   const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || window.location.origin);
-  const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const apiFetch = (path: string, options: RequestInit = {}) => {
@@ -69,9 +70,17 @@ export default function App() {
   const fetchStatus = async () => {
     try {
       const res = await apiFetch('/api/bot/status');
-      const data = await res.json();
-      setBotStatus(data);
-    } catch (e) {}
+      if (res.ok) {
+        const data = await res.json();
+        setBotStatus(data);
+        setIsOnline(true);
+        setLastSync(new Date().toLocaleTimeString());
+      } else {
+        setIsOnline(false);
+      }
+    } catch (e) {
+      setIsOnline(false);
+    }
   };
 
   const fetchRemoteUrl = async () => {
@@ -417,7 +426,12 @@ export default function App() {
                         <div className="bg-surface-800 border border-brand-primary/20 rounded overflow-hidden">
                           <div className="px-6 py-4 border-b border-brand-primary/10 flex items-center justify-between bg-black/20">
                             <h3 className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Node Fleet Registry</h3>
-                            <span className="text-[9px] font-bold text-brand-primary animate-pulse">SYNCING...</span>
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              isOnline ? "text-brand-primary animate-pulse" : "text-red-500"
+                            )}>
+                              {isOnline ? 'NETWORK ONLINE' : 'CONNECTION LOST'}
+                            </span>
                           </div>
                           <div className="p-4 space-y-2">
                             {accounts.map((acc, i) => {
@@ -447,7 +461,15 @@ export default function App() {
                                 </div>
                               );
                             })}
-                            {accounts.length === 0 && <p className="text-center py-12 text-gray-600 text-[10px] font-bold uppercase tracking-[0.3em]">No nodes registered</p>}
+                            {accounts.length === 0 && !isOnline && (
+                              <div className="py-12 text-center space-y-4">
+                                <XCircle className="mx-auto text-red-500/50" size={32} />
+                                <p className="text-gray-600 text-[10px] font-bold uppercase tracking-[0.3em]">Backend Unreachable</p>
+                              </div>
+                            )}
+                            {accounts.length === 0 && isOnline && (
+                              <p className="text-center py-12 text-gray-600 text-[10px] font-bold uppercase tracking-[0.3em]">No nodes registered</p>
+                            )}
                           </div>
                         </div>
                       </div>
