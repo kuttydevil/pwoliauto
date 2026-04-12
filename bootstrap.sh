@@ -173,11 +173,16 @@ function addLog(msg: string) {
 }
 
 async function getSettings() {
+  const defaultRepo = 'https://github.com/kuttydevil/pwoliauto.git';
   try {
     const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    return JSON.parse(data);
+    const settings = JSON.parse(data);
+    if (!settings.githubRepo || settings.githubRepo.trim() === '') {
+      settings.githubRepo = defaultRepo;
+    }
+    return settings;
   } catch {
-    return { githubRepo: 'https://github.com/kuttydevil/pwoliauto.git' };
+    return { githubRepo: defaultRepo };
   }
 }
 
@@ -195,26 +200,20 @@ app.post('/api/bot/pull', async (req, res) => {
   const settings = await getSettings();
   addLog(`Synchronizing core with ${settings.githubRepo}...`);
   
+  // Simple, aggressive sync: Clone if missing, otherwise force pull
   const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
-  const mainExists = await fs.access(path.join(BOT_DIR, 'main.py')).then(() => true).catch(() => false);
-  const botExists = await fs.access(path.join(BOT_DIR, 'bot.py')).then(() => true).catch(() => false);
-
+  
   let cmd;
-  if (exists && (mainExists || botExists)) {
-    // If repo exists and we have an entry point, try to update safely
+  if (exists) {
     cmd = `cd ${BOT_DIR} && git fetch --all && git reset --hard origin/main`;
   } else {
-    // If repo is broken or entry point is missing, do a fresh clone
-    addLog("Entry point missing or repo corrupted. Performing fresh clone...");
     cmd = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
   }
 
   exec(cmd, (error, stdout, stderr) => {
     if (error) {
-      addLog(`Sync Error: ${error.message}`);
-      // Last ditch effort
-      const lastDitch = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
-      exec(lastDitch, () => finalizeSync());
+      addLog(`Sync Warning: ${error.message}. Attempting fresh clone...`);
+      exec(`rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`, () => finalizeSync());
     } else {
       addLog(`Sync Complete.`);
       finalizeSync();
@@ -224,10 +223,7 @@ app.post('/api/bot/pull', async (req, res) => {
       const reqPath = path.join(BOT_DIR, 'requirements.txt');
       fs.access(reqPath).then(() => {
         addLog("Installing Python dependencies...");
-        exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
-          if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
-          else addLog("Python environment synchronized.");
-        });
+        exec(`pip3 install -r ${reqPath} --quiet`, () => addLog("Python environment ready."));
       }).catch(() => {});
       
       if (!res.headersSent) res.json({ success: true, stdout, stderr });

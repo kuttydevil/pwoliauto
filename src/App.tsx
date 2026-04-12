@@ -480,11 +480,19 @@ export default function App() {
                             <Github size={14} className="text-brand-primary" />
                             Core Repository
                           </h3>
-                          <div className="bg-black/40 p-3 rounded border border-brand-primary/10 mb-6">
+                          <div className="bg-black/40 p-3 rounded border border-brand-primary/10 mb-4">
                             <p className="text-[10px] text-gray-400 font-mono break-all">
                               {settings.githubRepo || 'Not Configured'}
                             </p>
                           </div>
+                          
+                          <div className="p-3 rounded bg-black/40 border border-brand-primary/10 mb-6">
+                            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2">Manual Engine Patch</p>
+                            <code className="text-[9px] text-brand-primary break-all block bg-black/60 p-2 rounded border border-brand-primary/5 select-all cursor-pointer">
+                              wget -O server.ts {window.location.origin}/server.ts && pm2 restart all
+                            </code>
+                          </div>
+
                           <button 
                             onClick={pullCode}
                             disabled={isPulling}
