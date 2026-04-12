@@ -85,28 +85,43 @@ async function startServer() {
     addLog(`Synchronizing core with ${settings.githubRepo}...`);
     
     const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
+    
+    // Use a more robust sync: stash local changes, pull, then re-apply
     const cmd = exists 
-      ? `cd ${BOT_DIR} && git pull`
+      ? `cd ${BOT_DIR} && git add . && git stash && git pull --rebase && git stash pop || true`
       : `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
 
     exec(cmd, (error, stdout, stderr) => {
-      if (error) {
-        addLog(`Sync Error: ${error.message}`);
-        return res.status(500).json({ error: error.message });
-      }
-      
-      // Auto-install dependencies if requirements.txt exists
-      const reqPath = path.join(BOT_DIR, 'requirements.txt');
-      fs.access(reqPath).then(() => {
-        addLog("Installing Python dependencies...");
-        exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
-          if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
-          else addLog("Python environment synchronized.");
+      if (error && !stdout.includes('Already up to date')) {
+        addLog(`Sync Warning (Attempting Force): ${error.message}`);
+        // If rebase/pull fails, force a reset to origin
+        const forceCmd = `cd ${BOT_DIR} && git fetch --all && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)`;
+        exec(forceCmd, (fErr, fOut) => {
+          if (fErr) {
+            addLog(`Sync Error: ${fErr.message}`);
+            return res.status(500).json({ error: fErr.message });
+          }
+          addLog("Force Sync Complete.");
+          finalizeSync();
         });
-      }).catch(() => {});
+      } else {
+        addLog(`Sync Complete.`);
+        finalizeSync();
+      }
 
-      addLog(`Sync Complete.`);
-      res.json({ success: true, stdout, stderr });
+      function finalizeSync() {
+        // Auto-install dependencies if requirements.txt exists
+        const reqPath = path.join(BOT_DIR, 'requirements.txt');
+        fs.access(reqPath).then(() => {
+          addLog("Installing Python dependencies...");
+          exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
+            if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
+            else addLog("Python environment synchronized.");
+          });
+        }).catch(() => {});
+        
+        if (!res.headersSent) res.json({ success: true, stdout, stderr });
+      }
     });
   });
 

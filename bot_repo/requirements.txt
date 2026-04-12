@@ -1,0 +1,10 @@
+requests
+google-generativeai
+tqdm
+yt-dlp
+static-ffmpeg
+selenium
+undetected-chromedriver
+fake-useragent
+opencv-python
+pyperclip
