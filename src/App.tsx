@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, Settings, Plus, Trash2, Save, Terminal, Users, Activity, Github, Server, CheckCircle2, XCircle, ChevronRight, Loader2, RefreshCw, Globe, Copy, ExternalLink } from 'lucide-react';
+import { Play, Square, Settings, Plus, Trash2, Save, Terminal, Users, Activity, Github, Server, CheckCircle2, XCircle, ChevronRight, Loader2, RefreshCw, Globe, Copy, ExternalLink, Cloud } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion, AnimatePresence } from 'motion/react';
+import { db, auth, OperationType, handleFirestoreError } from './firebase';
+import { doc, onSnapshot, updateDoc, setDoc, collection, query, orderBy, limit, deleteDoc, getDoc } from 'firebase/firestore';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,111 +40,68 @@ const DEFAULT_ACCOUNTS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'accounts' | 'listener' | 'settings'>('dashboard');
-  const [botStatus, setBotStatus] = useState({ running: false });
-  const [logs, setLogs] = useState<string[]>([]);
+  const [instanceData, setInstanceData] = useState<any>(null);
+  const [logs, setLogs] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
-  const [settings, setSettings] = useState({ githubRepo: '' });
-  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
-  const [isPulling, setIsPulling] = useState(false);
-  const [isToggling, setIsToggling] = useState(false);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isSavingAccounts, setIsSavingAccounts] = useState(false);
-  const [apiUrl, setApiUrl] = useState(localStorage.getItem('nethunter_api_url') || '');
-  const [bridgeInput, setBridgeInput] = useState(localStorage.getItem('nethunter_api_url') || '');
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const apiFetch = (path: string, options: RequestInit = {}) => {
-    const cleanUrl = apiUrl.replace(/\/+$/, '');
-    return fetch(`${cleanUrl}${path}`, {
-      ...options,
-      headers: {
-        'Bypass-Tunnel-Reminder': 'true',
-        'ngrok-skip-browser-warning': 'true',
-        ...options.headers,
-      }
-    });
-  };
-
-  const addLog = (msg: string) => {
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
-
-  const fetchStatus = async () => {
-    try {
-      const res = await apiFetch('/api/bot/status');
-      const data = await res.json();
-      setBotStatus(data);
-    } catch (e) {}
-  };
-
-  const fetchRemoteUrl = async () => {
-    try {
-      const res = await apiFetch('/api/remote-url');
-      const data = await res.json();
-      setRemoteUrl(data.url);
-    } catch (e) {}
-  };
-
-  const fetchLogs = async () => {
-    try {
-      const res = await apiFetch('/api/bot/logs');
-      const data = await res.json();
-      setLogs(data.logs || []);
-    } catch (e) {}
-  };
-
-  const fetchAccounts = async () => {
-    try {
-      const res = await apiFetch('/api/accounts');
-      const data = await res.json();
-      if (data && data.length > 0) {
-        setAccounts(data);
-      } else {
-        saveAccounts(DEFAULT_ACCOUNTS);
-      }
-    } catch (e) {}
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const res = await apiFetch('/api/settings');
-      const data = await res.json();
-      setSettings(data);
-    } catch (e) {}
-  };
+  const INSTANCE_ID = "default_instance";
 
   useEffect(() => {
-    const checkHealth = async () => {
-      if (!apiUrl) return;
-      try {
-        const cleanUrl = apiUrl.replace(/\/+$/, '');
-        const res = await fetch(`${cleanUrl}/api/bot/status`, {
-          headers: {
-            'Bypass-Tunnel-Reminder': 'true',
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
-        if (res.ok) {
-          addLog("SYSTEM: Connection to NetHunter Core established.");
-        } else {
-          addLog(`ERROR: Bridge returned status ${res.status}. You may need to authorize the tunnel.`);
-        }
-      } catch (err) {
-        addLog("ERROR: Unable to reach NetHunter Core. Check your Remote Bridge URL.");
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthReady(true);
+      } else {
+        signInAnonymously(auth).catch(err => console.error("Auth failed", err));
       }
-    };
+    });
+    return () => unsubscribe();
+  }, []);
 
-    checkHealth();
-    fetchStatus();
-    fetchAccounts();
-    fetchSettings();
-    fetchRemoteUrl();
-    const interval = setInterval(() => {
-      fetchStatus();
-      fetchLogs();
-    }, 1500);
-    return () => clearInterval(interval);
-  }, [apiUrl]);
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    // Listen to Instance Data
+    const instRef = doc(db, 'instances', INSTANCE_ID);
+    const unsubInst = onSnapshot(instRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setInstanceData(snapshot.data());
+      } else {
+        // Initialize instance if it doesn't exist
+        setDoc(instRef, {
+          id: INSTANCE_ID,
+          status: 'inactive',
+          isActive: false,
+          githubRepo: 'https://github.com/kuttydevil/pwoliauto.git',
+          botFile: 'bot.py'
+        });
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, `instances/${INSTANCE_ID}`));
+
+    // Listen to Logs
+    const logsRef = collection(db, 'instances', INSTANCE_ID, 'logs');
+    const logsQuery = query(logsRef, orderBy('timestamp', 'desc'), limit(100));
+    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
+      const newLogs = snapshot.docs.map(doc => doc.data()).reverse();
+      setLogs(newLogs);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, `instances/${INSTANCE_ID}/logs`));
+
+    // Listen to Accounts
+    const accountsRef = doc(db, 'instances', INSTANCE_ID, 'settings', 'accounts');
+    const unsubAccounts = onSnapshot(accountsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setAccounts(snapshot.data().list || []);
+      }
+    });
+
+    return () => {
+      unsubInst();
+      unsubLogs();
+      unsubAccounts();
+    };
+  }, [isAuthReady]);
 
   useEffect(() => {
     if (activeTab === 'listener') {
@@ -150,84 +110,61 @@ export default function App() {
   }, [logs, activeTab]);
 
   const toggleBot = async () => {
-    setIsToggling(true);
+    if (!instanceData) return;
+    setIsSaving(true);
     try {
-      const endpoint = botStatus.running ? '/api/bot/stop' : '/api/bot/start';
-      const res = await apiFetch(endpoint, { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        addLog(`ERROR: ${data.error || 'Failed to toggle engine.'}`);
-      }
-      await fetchStatus();
-    } catch (e) {
-      addLog(`ERROR: Network error while toggling engine.`);
-    } finally {
-      setIsToggling(false);
-    }
-  };
-
-  const pullCode = async () => {
-    setIsPulling(true);
-    await apiFetch('/api/bot/pull', { method: 'POST' });
-    await fetchLogs();
-    setIsPulling(false);
-  };
-
-  const saveAccounts = async (newAccounts: any[]) => {
-    setIsSavingAccounts(true);
-    try {
-      await apiFetch('/api/accounts', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Bypass-Tunnel-Reminder': 'true',
-          'ngrok-skip-browser-warning': 'true'
-        },
-        body: JSON.stringify(newAccounts),
+      await updateDoc(doc(db, 'instances', INSTANCE_ID), {
+        isActive: !instanceData.isActive
       });
-      setAccounts(newAccounts);
-      addLog("SYSTEM: Configuration committed successfully.");
-    } catch (e) {
-      addLog("ERROR: Failed to commit configuration.");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `instances/${INSTANCE_ID}`);
     } finally {
-      setIsSavingAccounts(false);
+      setIsSaving(false);
     }
   };
 
   const saveSettings = async (newSettings: any) => {
-    setIsSavingSettings(true);
-    const cleanUrl = bridgeInput.replace(/\/+$/, '');
-    setApiUrl(cleanUrl);
-    localStorage.setItem('nethunter_api_url', cleanUrl);
-    
-    if (cleanUrl) {
-      try {
-        await fetch(`${cleanUrl}/api/settings`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Bypass-Tunnel-Reminder': 'true',
-            'ngrok-skip-browser-warning': 'true'
-          },
-          body: JSON.stringify(newSettings),
-        });
-        setSettings(newSettings);
-        addLog("SYSTEM: Settings committed successfully.");
-      } catch (err) {
-        addLog("ERROR: Failed to commit settings to remote bridge.");
-      }
-    } else {
-      setSettings(newSettings);
+    setIsSaving(true);
+    try {
+      await updateDoc(doc(db, 'instances', INSTANCE_ID), newSettings);
+      addToast("Settings synced to cloud.", "success");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `instances/${INSTANCE_ID}`);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSavingSettings(false);
   };
 
-  // Parse logs to find active workers
+  const saveAccounts = async (newAccounts: any[]) => {
+    setIsSaving(true);
+    try {
+      await setDoc(doc(db, 'instances', INSTANCE_ID, 'settings', 'accounts'), {
+        list: newAccounts
+      });
+      addToast("Accounts synced to cloud.", "success");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `instances/${INSTANCE_ID}/settings/accounts`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const clearLogs = async () => {
+    setLogs([]);
+  };
+
+  const [toasts, setToasts] = useState<any[]>([]);
+  const addToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  };
+
   const activeWorkers = Array.from(new Set(
     logs
-      .filter(l => l.includes('[@'))
+      .filter(l => l.message?.includes('[@'))
       .map(l => {
-        const match = l.match(/\[@(.*?)\]/);
+        const match = l.message.match(/\[@(.*?)\]/);
         return match ? match[1] : null;
       })
       .filter(Boolean)
@@ -281,25 +218,29 @@ export default function App() {
         <div className="p-4 border-t border-brand-primary/20 bg-black/20">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className={cn("w-1.5 h-1.5 rounded-full", botStatus.running ? "bg-brand-primary animate-pulse shadow-[0_0_8px_#00ff41]" : "bg-gray-600")} />
+              <div className={cn("w-1.5 h-1.5 rounded-full", instanceData?.status === 'running' ? "bg-brand-primary animate-pulse shadow-[0_0_8px_#00ff41]" : "bg-gray-600")} />
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                {botStatus.running ? 'System Online' : 'System Offline'}
+                {instanceData?.status === 'running' ? 'System Online' : 'System Offline'}
               </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Cloud size={10} className="text-brand-primary/40" />
+              <span className="text-[8px] text-brand-primary/40 uppercase font-bold">Cloud Sync</span>
             </div>
           </div>
           <button
             onClick={toggleBot}
-            disabled={isToggling || !apiUrl}
+            disabled={isSaving || !isAuthReady}
             className={cn(
               "w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-[11px] font-bold uppercase tracking-widest transition-all duration-300",
-              (isToggling || !apiUrl) ? "opacity-50 cursor-not-allowed" : "",
-              botStatus.running 
+              (isSaving || !isAuthReady) ? "opacity-50 cursor-not-allowed" : "",
+              instanceData?.isActive 
                 ? "bg-red-500/10 border border-red-500/40 text-red-500 hover:bg-red-500/20" 
                 : "bg-brand-primary/10 border border-brand-primary/40 text-brand-primary hover:bg-brand-primary/20 neon-glow"
             )}
           >
-            {isToggling ? <Loader2 size={14} className="animate-spin" /> : (botStatus.running ? <Square size={14} /> : <Play size={14} />)}
-            {isToggling ? 'Processing...' : (botStatus.running ? 'Terminate' : 'Initialize')}
+            {isSaving ? <Loader2 size={14} className="animate-spin" /> : (instanceData?.isActive ? <Square size={14} /> : <Play size={14} />)}
+            {isSaving ? 'Syncing...' : (instanceData?.isActive ? 'Terminate' : 'Initialize')}
           </button>
         </div>
       </div>
@@ -315,17 +256,10 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button 
-              onClick={pullCode}
-              disabled={isPulling}
-              className={cn(
-                "flex items-center gap-2 px-4 py-1.5 rounded border border-brand-primary/30 text-[10px] font-bold uppercase tracking-widest text-brand-primary hover:bg-brand-primary/10 transition-all",
-                isPulling ? "opacity-50 cursor-not-allowed" : ""
-              )}
-            >
-              {isPulling ? <Loader2 size={12} className="animate-spin" /> : <Github size={12} />}
-              {isPulling ? 'Syncing...' : 'Sync Core'}
-            </button>
+            <div className="flex items-center gap-2 px-3 py-1 rounded bg-brand-primary/5 border border-brand-primary/20">
+              <Cloud size={12} className="text-brand-primary" />
+              <span className="text-[9px] font-bold text-brand-primary uppercase tracking-widest">Cloud Handshake Active</span>
+            </div>
           </div>
         </header>
 
@@ -358,9 +292,9 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       {[
                         { label: 'Total Nodes', value: accounts.length, icon: Users, color: 'text-blue-400' },
-                        { label: 'Active Threads', value: botStatus.running ? activeWorkers.length : 0, icon: Activity, color: 'text-brand-primary' },
-                        { label: 'Engine Load', value: botStatus.running ? '12.4%' : '0.0%', icon: Server, color: 'text-purple-400' },
-                        { label: 'Log Stream', value: logs.length > 0 ? 'Active' : 'Idle', icon: Terminal, color: 'text-orange-400' },
+                        { label: 'Active Threads', value: instanceData?.status === 'running' ? activeWorkers.length : 0, icon: Activity, color: 'text-brand-primary' },
+                        { label: 'Engine Load', value: instanceData?.status === 'running' ? '12.4%' : '0.0%', icon: Server, color: 'text-purple-400' },
+                        { label: 'Cloud Stream', value: logs.length > 0 ? 'Active' : 'Idle', icon: Terminal, color: 'text-orange-400' },
                       ].map((stat, i) => (
                         <div key={i} className="bg-surface-800 border border-brand-primary/10 p-5 rounded relative overflow-hidden group hover:border-brand-primary/30 transition-all">
                           <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -372,45 +306,34 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Remote Access - High Tech Bridge */}
-                    {remoteUrl && (
-                      <div className="bg-surface-800 border border-brand-primary/20 rounded p-8 relative overflow-hidden neon-glow">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary" />
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
-                          <div className="flex items-center gap-6">
-                            <div className="w-14 h-14 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center">
-                              <Globe size={28} className="text-brand-primary" />
-                            </div>
-                            <div>
-                              <h3 className="text-lg font-bold text-white uppercase tracking-widest">Secure Remote Bridge</h3>
-                              <p className="text-brand-primary/50 text-[10px] font-bold uppercase tracking-widest mt-1">Global encrypted tunnel established</p>
-                            </div>
+                    {/* Cloud Sync Status */}
+                    <div className="bg-surface-800 border border-brand-primary/20 rounded p-8 relative overflow-hidden neon-glow">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary" />
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
+                        <div className="flex items-center gap-6">
+                          <div className="w-14 h-14 rounded bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center">
+                            <Cloud size={28} className="text-brand-primary" />
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="bg-black/40 border border-brand-primary/20 px-6 py-3 rounded font-mono text-xs text-brand-primary select-all tracking-wider">
-                              {remoteUrl}
-                            </div>
-                            <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(remoteUrl);
-                                alert('ENCRYPTED URL COPIED');
-                              }}
-                              className="p-3 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20 transition-all active:scale-95"
-                            >
-                              <Copy size={18} />
-                            </button>
-                            <a 
-                              href={remoteUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="p-3 rounded bg-brand-primary/10 border border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20 transition-all active:scale-95"
-                            >
-                              <ExternalLink size={18} />
-                            </a>
+                          <div>
+                            <h3 className="text-lg font-bold text-white uppercase tracking-widest">Nexus Cloud Sync</h3>
+                            <p className="text-brand-primary/50 text-[10px] font-bold uppercase tracking-widest mt-1">Direct device-to-cloud encrypted uplink</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Device Hostname</span>
+                            <span className="text-xs font-mono text-brand-primary">{instanceData?.workerHostname || 'Awaiting Handshake...'}</span>
+                          </div>
+                          <div className="w-px h-8 bg-brand-primary/20 mx-4" />
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Last Heartbeat</span>
+                            <span className="text-xs font-mono text-brand-primary">
+                              {instanceData?.lastHeartbeat ? new Date(instanceData.lastHeartbeat.seconds * 1000).toLocaleTimeString() : 'N/A'}
+                            </span>
                           </div>
                         </div>
                       </div>
-                    )}
+                    </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       <div className="lg:col-span-2">
@@ -460,19 +383,17 @@ export default function App() {
                           </h3>
                           <div className="bg-black/40 p-3 rounded border border-brand-primary/10 mb-6">
                             <p className="text-[10px] text-gray-400 font-mono break-all">
-                              {settings.githubRepo || 'Not Configured'}
+                              {instanceData?.githubRepo || 'Not Configured'}
                             </p>
                           </div>
                           <button 
-                            onClick={pullCode}
-                            disabled={isPulling}
+                            onClick={() => updateDoc(doc(db, 'instances', INSTANCE_ID), { lastHeartbeat: null })}
                             className={cn(
-                              "w-full py-3 rounded bg-brand-primary/10 border border-brand-primary/40 text-brand-primary text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2",
-                              isPulling ? "opacity-50 cursor-not-allowed" : ""
+                              "w-full py-3 rounded bg-brand-primary/10 border border-brand-primary/40 text-brand-primary text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2"
                             )}
                           >
-                            {isPulling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                            {isPulling ? 'Syncing...' : 'Force Core Update'}
+                            <RefreshCw size={12} />
+                            Force Core Update
                           </button>
                         </div>
 
@@ -483,8 +404,8 @@ export default function App() {
                           </h3>
                           <div className="space-y-5">
                             {[
-                              { label: 'CPU Load', value: botStatus.running ? '12%' : '1%', color: 'bg-brand-primary' },
-                              { label: 'Memory', value: botStatus.running ? '248MB' : '42MB', color: 'bg-purple-500' },
+                              { label: 'CPU Load', value: instanceData?.status === 'running' ? '12%' : '1%', color: 'bg-brand-primary' },
+                              { label: 'Memory', value: instanceData?.status === 'running' ? '248MB' : '42MB', color: 'bg-purple-500' },
                             ].map((res, i) => (
                               <div key={i}>
                                 <div className="flex justify-between text-[9px] font-bold uppercase text-gray-500 mb-2 tracking-widest">
@@ -492,7 +413,7 @@ export default function App() {
                                   <span>{res.value}</span>
                                 </div>
                                 <div className="h-1 bg-black/40 rounded-full overflow-hidden">
-                                  <div className={cn("h-full transition-all duration-1000", res.color, botStatus.running ? "w-[40%]" : "w-[5%]")} />
+                                  <div className={cn("h-full transition-all duration-1000", res.color, instanceData?.status === 'running' ? "w-[40%]" : "w-[5%]")} />
                                 </div>
                               </div>
                             ))}
@@ -584,14 +505,14 @@ export default function App() {
 
                             <button
                               onClick={() => saveAccounts(accounts)}
-                              disabled={isSavingAccounts}
+                              disabled={isSaving}
                               className={cn(
                                 "w-full flex items-center justify-center gap-2 bg-brand-primary/5 border border-brand-primary/30 text-brand-primary py-3 rounded text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/10 transition-all",
-                                isSavingAccounts ? "opacity-50 cursor-not-allowed" : ""
+                                isSaving ? "opacity-50 cursor-not-allowed" : ""
                               )}
                             >
-                              {isSavingAccounts ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                              {isSavingAccounts ? 'Committing...' : 'Commit Configuration'}
+                              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                              {isSaving ? 'Committing...' : 'Commit Configuration'}
                             </button>
                           </div>
                         </div>
@@ -611,18 +532,18 @@ export default function App() {
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3 bg-black/40 border border-brand-primary/20 px-4 py-2 rounded">
                           <span className="relative flex h-2 w-2">
-                            {botStatus.running && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-primary opacity-75"></span>}
-                            <span className={cn("relative inline-flex rounded-full h-2 w-2", botStatus.running ? "bg-brand-primary" : "bg-gray-600")}></span>
+                            {instanceData?.status === 'running' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-primary opacity-75"></span>}
+                            <span className={cn("relative inline-flex rounded-full h-2 w-2", instanceData?.status === 'running' ? "bg-brand-primary" : "bg-gray-600")}></span>
                           </span>
                           <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest">
                             {activeWorkers.length} Active Nodes
                           </span>
                         </div>
                         <button 
-                          onClick={() => apiFetch('/api/bot/logs', { method: 'DELETE' }).then(fetchLogs)} 
+                          onClick={clearLogs} 
                           className="text-[9px] font-bold text-gray-500 hover:text-brand-primary uppercase tracking-widest transition-colors"
                         >
-                          Wipe Buffer
+                          Clear View
                         </button>
                       </div>
                     </div>
@@ -638,16 +559,15 @@ export default function App() {
                       </div>
                       <div className="flex-1 p-6 overflow-auto font-mono text-[12px] leading-relaxed scrollbar-hide">
                         {logs.length === 0 ? (
-                          <div className="text-brand-primary/20 animate-pulse">Waiting for handshake...</div>
+                          <div className="text-brand-primary/20 animate-pulse">Waiting for cloud handshake...</div>
                         ) : (
                           logs.map((log, i) => {
                             let colorClass = "text-gray-400";
-                            if (log.includes('ERROR') || log.includes('FAILED')) colorClass = "text-red-500";
-                            else if (log.includes('SUCCESS') || log.includes('OK')) colorClass = "text-brand-primary";
-                            else if (log.includes('WARN')) colorClass = "text-yellow-500";
-                            else if (log.includes('SYSTEM')) colorClass = "text-magenta-400";
+                            if (log.level === 'ERROR' || log.level === 'FATAL') colorClass = "text-red-500";
+                            else if (log.level === 'SUCCESS' || log.level === 'INFO') colorClass = "text-brand-primary";
+                            else if (log.level === 'WARN') colorClass = "text-yellow-500";
 
-                            const formattedLog = log.replace(/\[@(.*?)\]/g, '<span class="text-brand-primary font-bold">[@$1]</span>');
+                            const formattedLog = log.message.replace(/\[@(.*?)\]/g, '<span class="text-brand-primary font-bold">[@$1]</span>');
 
                             return (
                               <div 
@@ -679,8 +599,8 @@ export default function App() {
                           <p className="text-[10px] text-gray-500 uppercase tracking-widest">Source for automation logic and engine updates</p>
                           <input
                             type="text"
-                            value={settings.githubRepo}
-                            onChange={(e) => setSettings({ ...settings, githubRepo: e.target.value })}
+                            value={instanceData?.githubRepo || ''}
+                            onChange={(e) => setInstanceData({ ...instanceData, githubRepo: e.target.value })}
                             placeholder="https://github.com/username/repo.git"
                             className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
@@ -691,53 +611,24 @@ export default function App() {
                           <p className="text-[10px] text-gray-500 uppercase tracking-widest">The main script filename to execute (e.g., bot.py, main.py)</p>
                           <input
                             type="text"
-                            value={(settings as any).botFile || ''}
-                            onChange={(e) => setSettings({ ...settings, botFile: e.target.value } as any)}
+                            value={instanceData?.botFile || ''}
+                            onChange={(e) => setInstanceData({ ...instanceData, botFile: e.target.value })}
                             placeholder="bot.py"
                             className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
                           />
                         </div>
                         
-                        <div className="space-y-3 pt-8 border-t border-brand-primary/10">
-                          <div className="flex justify-between items-end">
-                            <div>
-                              <label className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Network Bridge URL</label>
-                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Handshake URL for remote dashboard synchronization</p>
-                            </div>
-                            {bridgeInput && (
-                              <a 
-                                href={bridgeInput} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="flex items-center gap-2 text-[9px] font-bold text-yellow-500 hover:text-yellow-400 uppercase tracking-widest bg-yellow-500/10 px-3 py-1.5 rounded border border-yellow-500/30 transition-colors"
-                              >
-                                <ExternalLink size={12} /> Authorize Tunnel
-                              </a>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            value={bridgeInput}
-                            onChange={(e) => setBridgeInput(e.target.value)}
-                            placeholder="https://your-tunnel.trycloudflare.com"
-                            className="w-full bg-black/40 border border-brand-primary/10 rounded px-4 py-3 text-xs text-brand-primary focus:outline-none focus:border-brand-primary/40 transition-all font-mono"
-                          />
-                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-2">
-                            * If connection fails, click "Authorize Tunnel" to bypass Cloudflare's security check.
-                          </p>
-                        </div>
-
                         <div className="pt-6">
                           <button
-                            onClick={() => saveSettings(settings)}
-                            disabled={isSavingSettings}
+                            onClick={() => saveSettings({ githubRepo: instanceData.githubRepo, botFile: instanceData.botFile })}
+                            disabled={isSaving}
                             className={cn(
                               "flex items-center justify-center gap-3 bg-brand-primary/10 border border-brand-primary/40 text-brand-primary px-8 py-3 rounded text-[11px] font-bold uppercase tracking-[0.2em] hover:bg-brand-primary/20 transition-all neon-glow",
-                              isSavingSettings ? "opacity-50 cursor-not-allowed" : ""
+                              isSaving ? "opacity-50 cursor-not-allowed" : ""
                             )}
                           >
-                            {isSavingSettings ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            {isSavingSettings ? 'Committing...' : 'Commit System Changes'}
+                            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            {isSaving ? 'Committing...' : 'Commit System Changes'}
                           </button>
                         </div>
                       </div>

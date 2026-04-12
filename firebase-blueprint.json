@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "Instance": {
+      "title": "Instance",
+      "description": "Represents a bot instance running on a device.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "linking", "running", "inactive", "failed"] },
+        "isActive": { "type": "boolean" },
+        "customPrompt": { "type": "string" },
+        "context": { "type": "string" },
+        "lastHeartbeat": { "type": "string", "format": "date-time" },
+        "workerHostname": { "type": "string" },
+        "workerPid": { "type": "number" },
+        "lastError": { "type": "string" },
+        "githubRepo": { "type": "string" },
+        "botFile": { "type": "string" }
+      },
+      "required": ["id", "status", "isActive"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message sent or received by the bot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "contactName": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai", "agent"] },
+        "messageText": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["received", "sending", "sent", "failed", "read", "seen"] }
+      },
+      "required": ["contactName", "sender", "timestamp"]
+    },
+    "ContactProfile": {
+      "title": "Contact Profile",
+      "description": "CRM data for a specific contact.",
+      "type": "object",
+      "properties": {
+        "contactName": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "crmStage": { "type": "string", "enum": ["New", "Contacted", "Proposal", "Won", "Lost"] },
+        "priority": { "type": "string", "enum": ["High", "Medium", "Low"] },
+        "dueDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contactName"]
+    },
+    "LogEntry": {
+      "title": "Log Entry",
+      "description": "A log message from the bot process.",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "level": { "type": "string", "enum": ["INFO", "WARN", "ERROR", "FATAL", "DEBUG"] },
+        "message": { "type": "string" }
+      },
+      "required": ["timestamp", "level", "message"]
+    }
+  },
+  "firestore": {
+    "/instances/{instanceId}": {
+      "schema": "Instance",
+      "description": "Collection of bot instances."
+    },
+    "/instances/{instanceId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages for a specific instance."
+    },
+    "/instances/{instanceId}/contacts/{contactName}": {
+      "schema": "ContactProfile",
+      "description": "CRM profiles for contacts."
+    },
+    "/instances/{instanceId}/logs/{logId}": {
+      "schema": "LogEntry",
+      "description": "Real-time logs for the instance."
+    }
+  }
+}

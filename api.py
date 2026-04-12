@@ -4,106 +4,71 @@ import subprocess
 import signal
 import threading
 import time
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)
-
-BOT_PROCESS = None
-BOT_LOGS = []
-MAX_LOGS = 2000
+import socket
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # Path configuration
 BASE_DIR = os.getcwd()
+CONFIG_FILE = os.path.join(BASE_DIR, 'firebase-applet-config.json')
+
+# Load Firebase Config
+with open(CONFIG_FILE, 'r') as f:
+    fb_config = json.load(f)
+
+# Initialize Firebase Admin
+# In this environment, we use the project ID from the config
+cred = credentials.ApplicationDefault()
+firebase_admin.initialize_app(cred, {
+    'projectId': fb_config['projectId'],
+})
+
+db = firestore.client(database_id=fb_config.get('firestoreDatabaseId'))
+
+# Worker Identity
+WORKER_HOSTNAME = socket.gethostname()
+WORKER_PID = os.getpid()
+INSTANCE_ID = "default_instance" # This should ideally be passed or discovered
+
+BOT_PROCESS = None
+SHUTDOWN_REQUESTED = False
+
+def add_log(level, msg):
+    print(f"[{level}] {msg}")
+    try:
+        db.collection('instances').document(INSTANCE_ID).collection('logs').add({
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'level': level,
+            'message': msg
+        })
+    except Exception as e:
+        print(f"Failed to log to Firestore: {e}")
 
 def get_bot_info():
-    """Dynamically find the bot script and its directory."""
-    settings = {}
-    try:
-        with open(SETTINGS_FILE, 'r') as f:
-            settings = json.load(f)
-    except: pass
-    
-    custom_file = settings.get('botFile')
-    
-    candidates = []
-    if custom_file:
-        candidates.append((BASE_DIR, custom_file))
-        candidates.append((os.path.join(BASE_DIR, 'bot_repo'), custom_file))
-    
-    candidates.extend([
-        (BASE_DIR, 'bot.py'),
-        (BASE_DIR, 'main.py'),
-        (os.path.join(BASE_DIR, 'bot_repo'), 'bot.py'),
-        (os.path.join(BASE_DIR, 'bot_repo'), 'main.py'),
-    ])
-    
-    for directory, filename in candidates:
-        if os.path.exists(os.path.join(directory, filename)):
-            return directory, filename
-    return os.path.join(BASE_DIR, 'bot_repo'), custom_file or 'bot.py'
+    """Fetch bot info from Firestore."""
+    doc = db.collection('instances').document(INSTANCE_ID).get()
+    if doc.exists:
+        return doc.to_dict()
+    return {}
 
-def get_accounts_file():
-    bot_dir, _ = get_bot_info()
-    return os.path.join(bot_dir, 'accounts_config.json')
+def heartbeat():
+    """Send periodic heartbeat to Firestore."""
+    while not SHUTDOWN_REQUESTED:
+        try:
+            db.collection('instances').document(INSTANCE_ID).update({
+                'lastHeartbeat': firestore.SERVER_TIMESTAMP,
+                'workerHostname': WORKER_HOSTNAME,
+                'workerPid': WORKER_PID,
+                'status': 'running' if BOT_PROCESS and BOT_PROCESS.poll() is None else 'inactive'
+            })
+        except Exception as e:
+            print(f"Heartbeat failed: {e}")
+        time.sleep(30)
 
-SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
-
-def add_log(msg):
-    global BOT_LOGS
-    msg = msg.strip()
-    if not msg: return
-    timestamp = time.strftime('%H:%M:%S')
-    BOT_LOGS.append(f"[{timestamp}] {msg}")
-    if len(BOT_LOGS) > MAX_LOGS:
-        BOT_LOGS.pop(0)
-    print(f"[{timestamp}] {msg}")
-
-@app.route('/api/settings', methods=['GET', 'POST'])
-def handle_settings():
-    if request.method == 'POST':
-        with open(SETTINGS_FILE, 'w') as f:
-            json.dump(request.json, f, indent=2)
-        return jsonify({"success": True})
-    try:
-        with open(SETTINGS_FILE, 'r') as f:
-            return jsonify(json.load(f))
-    except:
-        return jsonify({"githubRepo": "https://github.com/kuttydevil/pwoliauto.git"})
-
-@app.route('/api/accounts', methods=['GET', 'POST'])
-def handle_accounts():
-    accounts_file = get_accounts_file()
-    if request.method == 'POST':
-        os.makedirs(os.path.dirname(accounts_file), exist_ok=True)
-        with open(accounts_file, 'w') as f:
-            json.dump(request.json, f, indent=2)
-        return jsonify({"success": True})
-    try:
-        with open(accounts_file, 'r') as f:
-            return jsonify(json.load(f))
-    except:
-        return jsonify([])
-
-@app.route('/api/bot/start', methods=['POST'])
-def start_bot():
+def run_bot(bot_file, bot_dir):
     global BOT_PROCESS
-    if BOT_PROCESS and BOT_PROCESS.poll() is None:
-        return jsonify({"error": "Engine already active"}), 400
-    
-    bot_dir, bot_file = get_bot_info()
-    
-    if not os.path.exists(os.path.join(bot_dir, bot_file)):
-        # Log directory contents to help debug
-        files = os.listdir(bot_dir) if os.path.exists(bot_dir) else "Directory missing"
-        add_log(f"Error: {bot_file} not found in {bot_dir}")
-        add_log(f"Available files: {files}")
-        return jsonify({"error": f"Bot script {bot_file} missing in {bot_dir}. Sync core first."}), 400
-
-    def run_bot():
-        global BOT_PROCESS
-        add_log(f"Initializing {bot_file} execution in {bot_dir}...")
+    add_log("INFO", f"Initializing {bot_file} execution in {bot_dir}...")
+    try:
         BOT_PROCESS = subprocess.Popen(
             ['python3', bot_file],
             cwd=bot_dir,
@@ -113,83 +78,87 @@ def start_bot():
             bufsize=1
         )
         for line in iter(BOT_PROCESS.stdout.readline, ''):
-            add_log(line)
+            add_log("INFO", line.strip())
         BOT_PROCESS.stdout.close()
         return_code = BOT_PROCESS.wait()
-        add_log(f"Engine terminated (Code: {return_code})")
+        add_log("INFO", f"Engine terminated (Code: {return_code})")
+    except Exception as e:
+        add_log("ERROR", f"Bot execution failed: {e}")
+    finally:
         BOT_PROCESS = None
 
-    threading.Thread(target=run_bot, daemon=True).start()
-    return jsonify({"success": True})
-
-@app.route('/api/bot/stop', methods=['POST'])
-def stop_bot():
-    global BOT_PROCESS
-    if not BOT_PROCESS:
-        return jsonify({"error": "Engine inactive"}), 400
-    add_log("Sending termination signal...")
-    BOT_PROCESS.send_signal(signal.SIGINT)
-    return jsonify({"success": True})
-
-@app.route('/api/bot/status', methods=['GET'])
-def get_status():
-    return jsonify({"running": BOT_PROCESS is not None and BOT_PROCESS.poll() is None})
-
-@app.route('/api/bot/logs', methods=['GET', 'DELETE'])
-def handle_logs():
-    global BOT_LOGS
-    if request.method == 'DELETE':
-        BOT_LOGS = []
-        return jsonify({"success": True})
-    return jsonify({"logs": BOT_LOGS})
-
-@app.route('/api/bot/pull', methods=['POST'])
-def pull_code():
-    settings = handle_settings().get_json()
-    repo = settings.get('githubRepo', 'https://github.com/kuttydevil/pwoliauto.git')
-    add_log(f"Synchronizing core with {repo}...")
-    
-    # Determine where to pull
-    target_dir = os.path.join(BASE_DIR, 'bot_repo')
-    if os.path.exists(os.path.join(BASE_DIR, '.git')):
-        target_dir = BASE_DIR
-    
+def sync_code(repo, target_dir):
+    add_log("INFO", f"Synchronizing core with {repo}...")
     if os.path.exists(os.path.join(target_dir, '.git')):
         cmd = f"cd {target_dir} && git pull"
     else:
-        # Safe clone: don't rm -rf BASE_DIR!
-        if target_dir == BASE_DIR:
-            cmd = f"git init . && git remote add origin {repo} && git pull origin main || git pull origin master"
-        else:
-            cmd = f"rm -rf {target_dir} && git clone {repo} {target_dir}"
+        cmd = f"git clone {repo} {target_dir}"
     
     try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
-        add_log("Sync Complete.")
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+        add_log("INFO", "Sync Complete.")
         
-        # Auto-install dependencies if requirements.txt exists
         req_path = os.path.join(target_dir, 'requirements.txt')
         if os.path.exists(req_path):
-            add_log("Installing Python dependencies...")
+            add_log("INFO", "Installing Python dependencies...")
             pip_cmd = f"pip3 install -r {req_path} --quiet --break-system-packages || pip3 install -r {req_path} --quiet"
-            subprocess.Popen(pip_cmd, shell=True)
+            subprocess.run(pip_cmd, shell=True)
+    except Exception as e:
+        add_log("ERROR", f"Sync failed: {e}")
+
+def on_snapshot(doc_snapshot, changes, read_time):
+    global SHUTDOWN_REQUESTED
+    for doc in doc_snapshot:
+        data = doc.to_dict()
+        is_active = data.get('isActive', False)
+        
+        if is_active and not BOT_PROCESS:
+            # Start Bot
+            repo = data.get('githubRepo', 'https://github.com/kuttydevil/pwoliauto.git')
+            bot_file = data.get('botFile', 'bot.py')
+            target_dir = os.path.join(BASE_DIR, 'bot_repo')
             
-        return jsonify({"success": True, "output": output})
-    except subprocess.CalledProcessError as e:
-        add_log(f"Sync Error: {e.output.decode()}")
-        return jsonify({"error": e.output.decode()}), 500
+            # Sync first
+            sync_code(repo, target_dir)
+            
+            # Find bot file
+            search_dirs = [BASE_DIR, target_dir, os.path.join(target_dir, 'bot_repo')]
+            found_dir = None
+            for d in search_dirs:
+                if os.path.exists(os.path.join(d, bot_file)):
+                    found_dir = d
+                    break
+            
+            if found_dir:
+                threading.Thread(target=run_bot, args=(bot_file, found_dir), daemon=True).start()
+            else:
+                add_log("ERROR", f"Bot script {bot_file} not found.")
+        
+        elif not is_active and BOT_PROCESS:
+            # Stop Bot
+            add_log("INFO", "Stopping engine...")
+            BOT_PROCESS.send_signal(signal.SIGINT)
 
-@app.route('/api/remote-url', methods=['GET'])
-def get_remote_url():
+def main():
+    add_log("INFO", f"NH-Core Nexus Worker starting on {WORKER_HOSTNAME}...")
+    
+    # Watch the instance document
+    doc_ref = db.collection('instances').document(INSTANCE_ID)
+    doc_ref.on_snapshot(on_snapshot)
+    
+    # Start heartbeat thread
+    threading.Thread(target=heartbeat, daemon=True).start()
+    
+    # Keep main thread alive
     try:
-        with open('.remote_url', 'r') as f:
-            return jsonify({"url": f.read().strip()})
-    except:
-        return jsonify({"url": None})
-
-@app.route('/api/bootstrap', methods=['GET'])
-def get_bootstrap():
-    return send_file('bootstrap.sh')
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        global SHUTDOWN_REQUESTED
+        SHUTDOWN_REQUESTED = True
+        if BOT_PROCESS:
+            BOT_PROCESS.terminate()
+        add_log("INFO", "Worker shutting down.")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
+    main()

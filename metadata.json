@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "NH-Core Nexus",
+  "description": "Unified conversational AI infrastructure for NetHunter and Termux. Automate WhatsApp, Instagram, and CRM workflows with cloud-synced intelligence.",
   "requestFramePermissions": []
 }
 

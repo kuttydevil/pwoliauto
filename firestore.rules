@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /instances/{instanceId}
+    // Fields:
+    //   - id: string (required)
+    //   - phoneNumber: string
+    //   - status: string (required, enum: pending, linking, running, inactive, failed)
+    //   - isActive: boolean (required)
+    //   - customPrompt: string
+    //   - context: string
+    //   - lastHeartbeat: timestamp
+    //   - workerHostname: string
+    //   - workerPid: number
+    //   - lastError: string
+    //   - githubRepo: string
+    //   - botFile: string
+    //
+    // Subcollection: /instances/{instanceId}/messages/{messageId}
+    // Fields:
+    //   - contactName: string (required)
+    //   - sender: string (required, enum: user, ai, agent)
+    //   - messageText: string
+    //   - imageUrl: string
+    //   - timestamp: timestamp (required)
+    //   - status: string (enum: received, sending, sent, failed, read, seen)
+    //
+    // Subcollection: /instances/{instanceId}/contacts/{contactName}
+    // Fields:
+    //   - contactName: string (required)
+    //   - tags: list (strings)
+    //   - crmStage: string (enum: New, Contacted, Proposal, Won, Lost)
+    //   - priority: string (enum: High, Medium, Low)
+    //   - dueDate: timestamp
+    //
+    // Subcollection: /instances/{instanceId}/logs/{logId}
+    // Fields:
+    //   - timestamp: timestamp (required)
+    //   - level: string (required, enum: INFO, WARN, ERROR, FATAL, DEBUG)
+    //   - message: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "flowtiva@gmail.com" && request.auth.token.email_verified == true
+      );
+    }
+
+    function isValidInstance(data) {
+      return data.keys().hasAll(['id', 'status', 'isActive']) &&
+             data.id is string &&
+             data.status in ['pending', 'linking', 'running', 'inactive', 'failed'] &&
+             data.isActive is bool;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['contactName', 'sender', 'timestamp']) &&
+             data.contactName is string &&
+             data.sender in ['user', 'ai', 'agent'] &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['timestamp', 'level', 'message']) &&
+             data.timestamp is timestamp &&
+             data.level in ['INFO', 'WARN', 'ERROR', 'FATAL', 'DEBUG'] &&
+             data.message is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /instances/{instanceId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidInstance(request.resource.data);
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastHeartbeat', 'workerHostname', 'workerPid', 'status'])
+      );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+        allow update: if isAuthenticated() && isValidMessage(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /contacts/{contactName} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+
+      match /logs/{logId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidLog(request.resource.data);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
