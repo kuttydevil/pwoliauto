@@ -85,32 +85,35 @@ async function startServer() {
     addLog(`Synchronizing core with ${settings.githubRepo}...`);
     
     const exists = await fs.access(path.join(BOT_DIR, '.git')).then(() => true).catch(() => false);
-    
-    // Use a more robust sync: stash local changes, pull, then re-apply
-    const cmd = exists 
-      ? `cd ${BOT_DIR} && git add . && git stash && git pull --rebase && git stash pop || true`
-      : `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
+    const isSubDir = BOT_DIR.endsWith('bot_repo');
+
+    // SURGICAL SYNC: If we are in a sub-repo or the root, try to only update the bot logic
+    // This prevents overwriting the professional server.ts dashboard
+    let cmd;
+    if (exists) {
+      if (isSubDir) {
+        // If bot_repo is its own repo or we want to be safe, just fetch and checkout the bot files
+        cmd = `cd ${BOT_DIR} && git fetch --all && git checkout origin/main -- .`;
+      } else {
+        // If we are in the root, stash changes to server.ts, pull, then re-apply
+        cmd = `git add . && git stash && git pull --rebase && git stash pop || true`;
+      }
+    } else {
+      cmd = `rm -rf ${BOT_DIR} && git clone ${settings.githubRepo} ${BOT_DIR}`;
+    }
 
     exec(cmd, (error, stdout, stderr) => {
       if (error && !stdout.includes('Already up to date')) {
-        addLog(`Sync Warning (Attempting Force): ${error.message}`);
-        // If rebase/pull fails, force a reset to origin
-        const forceCmd = `cd ${BOT_DIR} && git fetch --all && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)`;
-        exec(forceCmd, (fErr, fOut) => {
-          if (fErr) {
-            addLog(`Sync Error: ${fErr.message}`);
-            return res.status(500).json({ error: fErr.message });
-          }
-          addLog("Force Sync Complete.");
-          finalizeSync();
-        });
+        addLog(`Sync Warning: ${error.message}`);
+        // Fallback: Try to at least get the bot_repo content
+        const fallbackCmd = `git fetch --all && git checkout origin/main -- bot_repo/ || true`;
+        exec(fallbackCmd, () => finalizeSync());
       } else {
         addLog(`Sync Complete.`);
         finalizeSync();
       }
 
       function finalizeSync() {
-        // Auto-install dependencies if requirements.txt exists
         const reqPath = path.join(BOT_DIR, 'requirements.txt');
         fs.access(reqPath).then(() => {
           addLog("Installing Python dependencies...");
