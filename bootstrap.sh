@@ -35,13 +35,13 @@ log_info "Performing system integrity check..."
 if [ -d "/data/data/com.termux" ]; then
     log_info "Termux environment detected. Initializing packages..."
     pkg update -y
-    pkg install -y nodejs python chromium git cloudflared wget -y
+    pkg install -y python chromium git cloudflared wget -y
     log_success "Termux dependencies installed."
 elif command -v apt &> /dev/null; then
     log_info "Kali Linux detected. Synchronizing repositories..."
     sudo apt update -qq
     log_info "Deploying core runtime (Node.js, Python, Git)..."
-    sudo apt install -y --no-install-recommends nodejs python3 python3-pip wget git -qq
+    sudo apt install -y --no-install-recommends python3 python3-pip wget git -qq
     
     log_info "Deploying headless browser engine..."
     sudo apt install -y chromium -qq || log_warn "Chromium deployment skipped."
@@ -70,227 +70,162 @@ else
     IS_IN_REPO=false
 fi
 
-# 3. Write package.json
-cat << 'EOF' > package.json
-{
-  "name": "nethunter-core-engine",
-  "version": "2.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "tsx server.ts"
-  },
-  "dependencies": {
-    "express": "^4.21.2",
-    "cors": "^2.8.5",
-    "tsx": "^4.19.2"
-  }
-}
+## 3. Write api.py (The Python Controller)
+log_info "Injecting Core Engine v2.0 (Python Edition)..."
+cat << 'EOF' > api.py
+import os
+import json
+import subprocess
+import signal
+import threading
+import time
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+BOT_PROCESS = None
+BOT_LOGS = []
+MAX_LOGS = 2000
+
+# Path configuration
+BASE_DIR = os.getcwd()
+BOT_DIR = os.path.join(BASE_DIR, 'bot_repo')
+if os.path.exists(os.path.join(BASE_DIR, 'bot.py')):
+    BOT_DIR = BASE_DIR
+
+ACCOUNTS_FILE = os.path.join(BOT_DIR, 'accounts_config.json')
+SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
+
+def add_log(msg):
+    global BOT_LOGS
+    msg = msg.strip()
+    if not msg: return
+    timestamp = time.strftime('%H:%M:%S')
+    BOT_LOGS.append(f"[{timestamp}] {msg}")
+    if len(BOT_LOGS) > MAX_LOGS:
+        BOT_LOGS.pop(0)
+    print(f"[{timestamp}] {msg}")
+
+@app.route('/api/settings', methods=['GET', 'POST'])
+def handle_settings():
+    if request.method == 'POST':
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(request.json, f, indent=2)
+        return jsonify({"success": True})
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            return jsonify(json.load(f))
+    except:
+        return jsonify({"githubRepo": "https://github.com/kuttydevil/pwoliauto.git"})
+
+@app.route('/api/accounts', methods=['GET', 'POST'])
+def handle_accounts():
+    if request.method == 'POST':
+        os.makedirs(BOT_DIR, exist_ok=True)
+        with open(ACCOUNTS_FILE, 'w') as f:
+            json.dump(request.json, f, indent=2)
+        return jsonify({"success": True})
+    try:
+        with open(ACCOUNTS_FILE, 'r') as f:
+            return jsonify(json.load(f))
+    except:
+        return jsonify([])
+
+@app.route('/api/bot/start', methods=['POST'])
+def start_bot():
+    global BOT_PROCESS
+    if BOT_PROCESS and BOT_PROCESS.poll() is None:
+        return jsonify({"error": "Engine already active"}), 400
+    
+    bot_file = 'bot.py'
+    if not os.path.exists(os.path.join(BOT_DIR, bot_file)):
+        bot_file = 'main.py'
+    
+    if not os.path.exists(os.path.join(BOT_DIR, bot_file)):
+        return jsonify({"error": "Bot script missing. Sync core first."}), 400
+
+    def run_bot():
+        global BOT_PROCESS
+        add_log(f"Initializing {bot_file} execution...")
+        BOT_PROCESS = subprocess.Popen(
+            ['python3', bot_file],
+            cwd=BOT_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        for line in iter(BOT_PROCESS.stdout.readline, ''):
+            add_log(line)
+        BOT_PROCESS.stdout.close()
+        return_code = BOT_PROCESS.wait()
+        add_log(f"Engine terminated (Code: {return_code})")
+        BOT_PROCESS = None
+
+    threading.Thread(target=run_bot, daemon=True).start()
+    return jsonify({"success": True})
+
+@app.route('/api/bot/stop', methods=['POST'])
+def stop_bot():
+    global BOT_PROCESS
+    if not BOT_PROCESS:
+        return jsonify({"error": "Engine inactive"}), 400
+    add_log("Sending termination signal...")
+    BOT_PROCESS.send_signal(signal.SIGINT)
+    return jsonify({"success": True})
+
+@app.route('/api/bot/status', methods=['GET'])
+def get_status():
+    return jsonify({"running": BOT_PROCESS is not None and BOT_PROCESS.poll() is None})
+
+@app.route('/api/bot/logs', methods=['GET', 'DELETE'])
+def handle_logs():
+    global BOT_LOGS
+    if request.method == 'DELETE':
+        BOT_LOGS = []
+        return jsonify({"success": True})
+    return jsonify({"logs": BOT_LOGS})
+
+@app.route('/api/bot/pull', methods=['POST'])
+def pull_code():
+    settings = handle_settings().get_json()
+    repo = settings.get('githubRepo', 'https://github.com/kuttydevil/pwoliauto.git')
+    add_log(f"Synchronizing core with {repo}...")
+    
+    if os.path.exists(os.path.join(BOT_DIR, '.git')):
+        cmd = f"cd {BOT_DIR} && git pull"
+    else:
+        cmd = f"rm -rf {BOT_DIR} && git clone {repo} {BOT_DIR}"
+    
+    try:
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+        add_log("Sync Complete.")
+        return jsonify({"success": True, "output": output})
+    except subprocess.CalledProcessError as e:
+        add_log(f"Sync Error: {e.output.decode()}")
+        return jsonify({"error": e.output.decode()}), 500
+
+@app.route('/api/remote-url', methods=['GET'])
+def get_remote_url():
+    try:
+        with open('.remote_url', 'r') as f:
+            return jsonify({"url": f.read().strip()})
+    except:
+        return jsonify({"url": None})
+
+@app.route('/api/bootstrap', methods=['GET'])
+def get_bootstrap():
+    return send_file('bootstrap.sh')
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=3000)
 EOF
 
-log_info "Installing Node.js dependencies..."
-npm install --quiet
-
-# 4. Write server.ts (The Professional Controller)
-log_info "Injecting Core Engine v2.0..."
-cat << 'EOF' > server.ts
-import express from 'express';
-import cors from 'cors';
-import { spawn, ChildProcess, exec } from 'child_process';
-import fs from 'fs/promises';
-import path from 'path';
-
-async function startServer() {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-
-  const findBot = async () => {
-    const candidates = [
-      path.join(process.cwd(), 'bot.py'),
-      path.join(process.cwd(), 'main.py'),
-      path.join(process.cwd(), 'bot_repo', 'bot.py'),
-      path.join(process.cwd(), 'bot_repo', 'main.py'),
-    ];
-    for (const c of candidates) {
-      if (await fs.access(c).then(() => true).catch(() => false)) {
-        return { dir: path.dirname(c), file: path.basename(c) };
-      }
-    }
-    return null;
-  };
-
-  const botInfo = await findBot();
-  const BOT_DIR = botInfo ? botInfo.dir : path.join(process.cwd(), 'bot_repo');
-  const BOT_FILE = botInfo ? botInfo.file : 'bot.py';
-
-  const ACCOUNTS_FILE = path.join(BOT_DIR, 'accounts_config.json');
-  const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
-
-let botProcess: ChildProcess | null = null;
-let botLogs: string[] = [];
-const MAX_LOGS = 2000;
-
-const COLORS = {
-  reset: "\x1b[0m",
-  bright: "\x1b[1m",
-  dim: "\x1b[2m",
-  blue: "\x1b[34m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  cyan: "\x1b[36m",
-  magenta: "\x1b[35m"
-};
-
-function printPro(type: 'INFO' | 'SUCCESS' | 'ERROR' | 'WARN' | 'SYSTEM', message: string) {
-  const timestamp = new Date().toLocaleTimeString();
-  const color = type === 'SUCCESS' ? COLORS.green : 
-                type === 'ERROR' ? COLORS.red : 
-                type === 'WARN' ? COLORS.yellow : 
-                type === 'SYSTEM' ? COLORS.magenta : COLORS.blue;
-  
-  console.log(`${COLORS.dim}[${timestamp}]${COLORS.reset} ${COLORS.bright}${color}${type.padEnd(7)}${COLORS.reset} ${message}`);
-}
-
-function addLog(msg: string) {
-  const cleanMsg = msg.trim();
-  if (!cleanMsg) return;
-
-  botLogs.push(`[${new Date().toLocaleTimeString()}] ${cleanMsg}`);
-  if (botLogs.length > MAX_LOGS) botLogs.shift();
-
-  if (cleanMsg.toLowerCase().includes('error') || cleanMsg.toLowerCase().includes('failed')) {
-    printPro('ERROR', cleanMsg);
-  } else if (cleanMsg.toLowerCase().includes('success') || cleanMsg.toLowerCase().includes('completed')) {
-    printPro('SUCCESS', cleanMsg);
-  } else if (cleanMsg.toLowerCase().includes('warning')) {
-    printPro('WARN', cleanMsg);
-  } else {
-    printPro('INFO', cleanMsg);
-  }
-}
-
-async function getSettings() {
-  try {
-    const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return { githubRepo: 'https://github.com/kuttydevil/pwoliauto.git' };
-  }
-}
-
-async function saveSettings(settings: any) {
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-}
-
-app.get('/api/settings', async (req, res) => res.json(await getSettings()));
-app.post('/api/settings', async (req, res) => {
-  await saveSettings(req.body);
-  res.json({ success: true });
-});
-
-app.post('/api/bot/pull', async (req, res) => {
-  const settings = await getSettings();
-  addLog(`Synchronizing core with ${settings.githubRepo}...`);
-  
-  const isLocal = (await fs.access(path.join(process.cwd(), '.git')).then(() => true).catch(() => false));
-  const cmd = isLocal ? `git pull` : `cd bot_repo && git pull`;
-
-  exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      addLog(`Sync Error: ${error.message}`);
-      return res.status(500).json({ error: error.message });
-    }
-    
-    // Auto-install dependencies if requirements.txt exists
-    const reqPath = path.join(BOT_DIR, 'requirements.txt');
-    fs.access(reqPath).then(() => {
-      addLog("Installing Python dependencies...");
-      exec(`pip3 install -r ${reqPath} --quiet`, (pErr) => {
-        if (pErr) addLog(`Dependency Warning: ${pErr.message}`);
-        else addLog("Python environment synchronized.");
-      });
-    }).catch(() => {});
-
-    addLog(`Sync Complete.`);
-    res.json({ success: true, stdout, stderr });
-  });
-});
-
-app.get('/api/accounts', async (req, res) => {
-  try {
-    const data = await fs.readFile(ACCOUNTS_FILE, 'utf-8');
-    res.json(JSON.parse(data));
-  } catch { res.json([]); }
-});
-
-app.post('/api/accounts', async (req, res) => {
-  try {
-    await fs.mkdir(BOT_DIR, { recursive: true });
-    await fs.writeFile(ACCOUNTS_FILE, JSON.stringify(req.body, null, 2));
-    res.json({ success: true });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-  app.post('/api/bot/start', async (req, res) => {
-    if (botProcess) return res.status(400).json({ error: 'Engine already active' });
-    const scriptPath = path.join(BOT_DIR, BOT_FILE);
-    if (!(await fs.access(scriptPath).then(() => true).catch(() => false))) {
-      return res.status(400).json({ error: `${BOT_FILE} missing. Sync core first.` });
-    }
-
-    addLog(`Initializing ${BOT_FILE} execution...`);
-    botProcess = spawn('python3', [BOT_FILE], { cwd: BOT_DIR });
-    botProcess.stdout?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(l)));
-    botProcess.stderr?.on('data', (d) => d.toString().split('\n').forEach((l: string) => addLog(`ERROR: ${l}`)));
-    botProcess.on('close', (c) => { addLog(`Engine terminated (Code: ${c})`); botProcess = null; });
-    res.json({ success: true });
-  });
-
-app.post('/api/bot/stop', async (req, res) => {
-  if (!botProcess) return res.status(400).json({ error: 'Engine inactive' });
-  addLog('Sending termination signal...');
-  botProcess.kill('SIGINT');
-  res.json({ success: true });
-});
-
-app.get('/api/bot/status', (req, res) => res.json({ running: !!botProcess }));
-app.get('/api/bot/logs', (req, res) => res.json({ logs: botLogs }));
-app.delete('/api/bot/logs', (req, res) => { botLogs = []; res.json({ success: true }); });
-
-app.get('/api/remote-url', async (req, res) => {
-  try {
-    const url = await fs.readFile(path.join(process.cwd(), '.remote_url'), 'utf-8');
-    res.json({ url: url.trim() });
-  } catch { res.json({ url: null }); }
-});
-
-app.get('/api/bootstrap', async (req, res) => {
-  try {
-    const content = await fs.readFile(path.join(process.cwd(), 'bootstrap.sh'), 'utf-8');
-    res.setHeader('Content-Type', 'text/x-sh');
-    res.send(content);
-  } catch { res.status(500).send('Bootstrap read error'); }
-});
-
-  const PORT = 3000;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.clear();
-    console.log(`\n${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
-    console.log(`${COLORS.blue}${COLORS.bright}   NETHUNTER CORE - ULTIMATE ENGINE v2.0            ${COLORS.reset}`);
-    console.log(`${COLORS.blue}${COLORS.bright}====================================================${COLORS.reset}`);
-    printPro('SYSTEM', `Engine listening on port ${PORT}`);
-    printPro('SYSTEM', `Secure Bridge: Active`);
-    
-    fs.readFile('.remote_url', 'utf-8').then(url => {
-      printPro('SYSTEM', `Public URL: ${COLORS.bright}${COLORS.cyan}${url.trim()}${COLORS.reset}`);
-    }).catch(() => {});
-    console.log(`${COLORS.dim}----------------------------------------------------${COLORS.reset}\n`);
-  });
-}
-
-startServer();
-EOF
+# 4. Install Python API dependencies
+log_info "Installing API dependencies (Flask, Flask-CORS)..."
+pip3 install flask flask-cors --quiet
 
 # 5. Initial Repository Sync
 log_info "Synchronizing core repository..."
@@ -353,5 +288,5 @@ if [ -f .remote_url ]; then
 fi
 echo -e "${BLUE}${BOLD}====================================================${NC}\n"
 
-log_info "Launching Core Engine..."
-npm run dev
+log_info "Launching Core Engine (Python API)..."
+python3 api.py
